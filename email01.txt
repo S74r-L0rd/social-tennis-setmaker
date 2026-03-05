@@ -1,0 +1,10 @@
+Subject: Clarification of Requirements – Social Tennis Setmaker Project 
+Dear Warren, My name is Aakash,and I am part of the student team assigned to the Social Tennis Setmaker project for CITS5206 at The University of Western Australia. Thank you very much for providing this project opportunity — we are looking forward to working with you. 
+From the project description, we understand that the key challenge with existing software is the difficulty in generating sets that are both balanced in strength and varied throughout a session. To better understand your requirements, we would like to clarify a few specific points: 1.How many players typically participate in a social session? 
+2.Is a new set generated for every round of play? 
+3.When referring to “balanced” sets, is this primarily based on player strength ratings? If so, is there an existing rating system in use? 
+4.Among the listed priorities (balance, gender configuration, rotation fairness, etc.), would you be able to provide a simple ranking in order of importance? 
+Additionally, if you have any more detailed background information, examples of current scheduling processes, or information about the software currently being used, we would greatly appreciate it. This would help us gain a more comprehensive understanding of the practical context. 
+If convenient, we would also welcome the opportunity to arrange a brief meeting (in person or via Zoom/Teams) to further discuss the workflow of a typical session and your expectations for the system. We are happy to accommodate your availability. Thank you for your time and support. We look forward to your response. 
+Kind regards 
+Aakash
