@@ -4,6 +4,14 @@ const {
   applyRoundResults,
 } = require("../src/algorithm/scheduler");
 
+/**
+ * Creates a list of mock players for testing.
+ * Ratings are assigned in a repeating pattern: 5, 6, 7.
+ * All players start with a sitOutCount of 0 unless modified in a test.
+ *
+ * @param {number} n - Number of players to generate.
+ * @returns {Array<Object>} Array of player objects.
+ */
 function createPlayers(n) {
   return Array.from({ length: n }, (_, i) => ({
     id: i + 1,
@@ -12,10 +20,29 @@ function createPlayers(n) {
   }));
 }
 
+/**
+ * Creates a fresh empty history object for testing.
+ * This ensures each test starts with no previous partner or opponent history.
+ *
+ * @returns {{partner: Object.<string, number>, opponent: Object.<string, number>}}
+ */
 function emptyHistory() {
   return { partner: {}, opponent: {} };
 }
 
+/**
+ * Test 1:
+ * Verifies that the scheduler generates the correct number of matches
+ * when the number of players exactly fits the available courts.
+ *
+ * Scenario:
+ * - 8 players
+ * - 2 courts
+ * - Each court supports 1 doubles match (4 players)
+ *
+ * Expected:
+ * - 2 matches should be generated
+ */
 (function testBasicGeneration() {
   const players = createPlayers(8);
   const courts = ["Court 1", "Court 2"];
@@ -27,6 +54,20 @@ function emptyHistory() {
   console.log("Test 1 passed: basic generation");
 })();
 
+/**
+ * Test 2:
+ * Verifies sit-out fairness behaviour.
+ *
+ * Scenario:
+ * - 10 players
+ * - 2 courts, so only 8 players can play
+ * - Player 1 is given a higher sitOutCount than the others
+ *
+ * Expected:
+ * - Player 1 should not be selected as a sit-out,
+ *   because the scheduler prioritises players who have already
+ *   missed more rounds.
+ */
 (function testSitOutFairness() {
   const players = createPlayers(10);
   players[0].sitOutCount = 3;
@@ -41,6 +82,18 @@ function emptyHistory() {
   console.log("Test 2 passed: sit-out fairness");
 })();
 
+/**
+ * Test 3:
+ * Verifies that the scheduler respects court capacity.
+ *
+ * Scenario:
+ * - 20 players available
+ * - Only 3 courts available
+ * - 3 courts allow a maximum of 12 scheduled players
+ *
+ * Expected:
+ * - No more than 3 matches should be generated
+ */
 (function testCourtCapacity() {
   const players = createPlayers(20);
   const courts = ["Court 1", "Court 2", "Court 3"];
@@ -52,6 +105,18 @@ function emptyHistory() {
   console.log("Test 3 passed: respects court capacity");
 })();
 
+/**
+ * Test 4:
+ * Verifies that match history is updated after a round is applied.
+ *
+ * Scenario:
+ * - Generate a valid round
+ * - Apply the results using applyRoundResults()
+ *
+ * Expected:
+ * - Partner history should contain entries
+ * - Opponent history should contain entries
+ */
 (function testHistoryTracking() {
   const players = createPlayers(8);
   const courts = ["Court 1", "Court 2"];
@@ -65,6 +130,18 @@ function emptyHistory() {
   console.log("Test 4 passed: history tracking");
 })();
 
+/**
+ * Test 5:
+ * Verifies that the scheduler avoids repeated partner pairings
+ * when there is already strong history against a specific pair.
+ *
+ * Scenario:
+ * - Penalise players 1 and 2 heavily in partner history
+ *
+ * Expected:
+ * - Players 1 and 2 should not appear on the same team
+ *   in the generated matches.
+ */
 (function testAvoidRepeatedPartners() {
   const players = createPlayers(8);
   const courts = ["Court 1", "Court 2"];
