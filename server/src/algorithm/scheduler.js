@@ -97,3 +97,34 @@ function generateRound(players, courts, history, config = {}) {
     sitOuts,
   };
 }
+
+function applyRoundResults(result, history) {
+  for (const match of result.matches) {
+    const [team1, team2] = match.teams;
+
+    // Record partner relationships for both teams.
+    for (const team of [team1, team2]) {
+      const key = makePairKey(team[0].id, team[1].id);
+      history.partner[key] = (history.partner[key] || 0) + 1;
+    }
+
+    // Record opponent relationships across both teams.
+    for (const p1 of team1) {
+      for (const p2 of team2) {
+        const key = makePairKey(p1.id, p2.id);
+        history.opponent[key] = (history.opponent[key] || 0) + 1;
+      }
+    }
+  }
+
+  // Increase sit-out count for all players who did not get a match this round.
+  for (const player of result.sitOuts) {
+    player.sitOutCount += 1;
+  }
+}
+
+// Export public functions for use in tests or such folders
+module.exports = {
+  generateRound,
+  applyRoundResults,
+};
