@@ -52,3 +52,40 @@ function emptyHistory() {
   console.log("Test 3 passed: respects court capacity");
 })();
 
+(function testHistoryTracking() {
+  const players = createPlayers(8);
+  const courts = ["Court 1", "Court 2"];
+  const history = emptyHistory();
+
+  const result = generateRound(players, courts, history);
+  applyRoundResults(result, history);
+
+  assert(Object.keys(history.partner).length > 0);
+  assert(Object.keys(history.opponent).length > 0);
+  console.log("Test 4 passed: history tracking");
+})();
+
+(function testAvoidRepeatedPartners() {
+  const players = createPlayers(8);
+  const courts = ["Court 1", "Court 2"];
+  const history = emptyHistory();
+
+  // Simulate a strong repetition penalty for pairing players 1 and 2 together
+  history.partner["1-2"] = 5;
+
+  const result = generateRound(players, courts, history);
+
+  let repeated = false;
+
+  for (const match of result.matches) {
+    for (const team of match.teams) {
+      const ids = [team[0].id, team[1].id].sort((a, b) => a - b);
+      if (ids[0] === 1 && ids[1] === 2) {
+        repeated = true;
+      }
+    }
+  }
+
+  assert(!repeated);
+  console.log("Test 5 passed: avoids repeated partners");
+})();
