@@ -1,11 +1,56 @@
+/**
+ * Randomly reorders the input array and returns a new shuffled copy.
+ * This helps avoid producing the same groups repeatedly when players
+ * have identical sit-out priority.
+ *
+ * @param {Array<any>} array - The array to shuffle.
+ * @returns {Array<any>} A new shuffled array.
+ */
 function shuffle(array) {
   return [...array].sort(() => Math.random() - 0.5);
 }
 
+/**
+ * Creates a consistent key for storing player-pair history.
+ * The player IDs are sorted first so that:
+ * makePairKey(2, 7) === makePairKey(7, 2)
+ *
+ * This is important for tracking partner and opponent relationships
+ * without duplicating entries for reversed order.
+ *
+ * @param {number} a - First player ID.
+ * @param {number} b - Second player ID.
+ * @returns {string} A normalised string key for the pair.
+ */
 function makePairKey(a, b) {
   return [a, b].sort((x, y) => x - y).join("-");
 }
 
+/**
+ * Evaluates all valid doubles splits for a group of 4 players
+ * and returns the best-scoring arrangement.
+ *
+ * For four players A, B, C, D, there are exactly 3 possible ways
+ * to form two doubles teams:
+ * 1. AB vs CD
+ * 2. AC vs BD
+ * 3. AD vs BC
+ *
+ * Scoring criteria:
+ * - Lower skill imbalance between teams is preferred
+ * - Repeated partners are penalised more heavily
+ * - Repeated opponents are penalised as well
+ *
+ * Higher score = better arrangement
+ *
+ * @param {Array<Object>} group - A group of exactly 4 player objects.
+ * @param {number} group[].id - Unique player ID.
+ * @param {number} group[].rating - Skill rating of the player.
+ * @param {Object} history - Historical match relationship data.
+ * @param {Object.<string, number>} history.partner - Map of partner pair frequencies.
+ * @param {Object.<string, number>} history.opponent - Map of opponent pair frequencies.
+ * @returns {{score: number, teams: Array<Array<Object>>}} Best split and its score.
+ */
 function scoreGrouping(group, history) {
   const [A, B, C, D] = group;
 
@@ -52,6 +97,41 @@ function scoreGrouping(group, history) {
   return best;
 }
 
+/**
+ * Generates one round of doubles matches for the available courts.
+ *
+ * Workflow:
+ * 1. Determine maximum player capacity from court count
+ * 2. Sort players by sit-out count to prioritise fairness
+ * 3. Select the players who can play this round
+ * 4. Mark the remaining players as sit-outs
+ * 5. Shuffle selected players to reduce deterministic grouping
+ * 6. Divide selected players into groups of 4
+ * 7. For each group, choose the best team split
+ * 8. Assign each match to a court
+ *
+ * Notes:
+ * - This function assumes one doubles match per court
+ * - Each court requires exactly 4 players
+ * - The config parameter is reserved for future enhancements
+ *
+ * @param {Array<Object>} players - List of players available for this round.
+ * @param {number} players[].id - Unique player ID.
+ * @param {number} players[].rating - Skill rating of the player.
+ * @param {number} players[].sitOutCount - Number of previous sit-outs.
+ * @param {Array<string>} courts - List of available court names or IDs.
+ * @param {Object} history - Historical partner and opponent frequency data.
+ * @param {Object.<string, number>} history.partner - Map of partner pair frequencies.
+ * @param {Object.<string, number>} history.opponent - Map of opponent pair frequencies.
+ * @param {Object} [config={}] - Optional scheduler configuration.
+ * @returns {{
+ *   matches: Array<{
+ *     court: string,
+ *     teams: Array<Array<Object>>
+ *   }>,
+ *   sitOuts: Array<Object>
+ * }} Generated round result.
+ */
 function generateRound(players, courts, history, config = {}) {
   // Maximum number of players that can be scheduled this round.
   // Each court supports exactly one doubles match = 4 players.
@@ -98,6 +178,29 @@ function generateRound(players, courts, history, config = {}) {
   };
 }
 
+/**
+ * Applies the results of a generated round to the history object.
+ *
+ * This updates:
+ * - partner frequencies for players on the same team
+ * - opponent frequencies for players on opposite teams
+ * - sit-out counts for players who did not play
+ *
+ * This updated history should be persisted after each round so that
+ * future scheduling decisions can account for earlier matches.
+ *
+ * @param {{
+ *   matches: Array<{
+ *     court: string,
+ *     teams: Array<Array<Object>>
+ *   }>,
+ *   sitOuts: Array<Object>
+ * }} result - The generated round result.
+ * @param {Object} history - Historical partner and opponent frequency data.
+ * @param {Object.<string, number>} history.partner - Map of partner pair frequencies.
+ * @param {Object.<string, number>} history.opponent - Map of opponent pair frequencies.
+ * @returns {void}
+ */
 function applyRoundResults(result, history) {
   for (const match of result.matches) {
     const [team1, team2] = match.teams;
