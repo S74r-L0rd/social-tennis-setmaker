@@ -43,11 +43,57 @@ function scoreGrouping(group, history) {
       }
     }
 
-    // Keep the arrangement with the highest score.
+    // For keeping the arrangement with the highest score.
     if (!best || score > best.score) {
       best = { score, teams: [team1, team2] };
     }
   }
 
   return best;
+}
+
+function generateRound(players, courts, history, config = {}) {
+  // Maximum number of players that can be scheduled this round.
+  // Each court supports exactly one doubles match = 4 players.
+  const maxPlayers = courts.length * 4;
+
+  // Players with fewer sit-outs are lower priority to play this round.
+  // Players who have already sat out more often should be given preference.
+  const sortedPlayers = [...players].sort(
+    (a, b) => a.sitOutCount - b.sitOutCount
+  );
+
+  // Players within capacity are selected to play this round.
+  const selectedPlayers = sortedPlayers.slice(0, maxPlayers);
+
+  // Any remaining players must sit out.
+  const sitOuts = sortedPlayers.slice(maxPlayers);
+
+  // Shuffle selected players before grouping so that the same order
+  // does not always generate the same match blocks.
+  const shuffledPlayers = shuffle(selectedPlayers);
+  const groups = [];
+
+  // Create groups of exactly 4 players.
+  for (let i = 0; i < shuffledPlayers.length; i += 4) {
+    const group = shuffledPlayers.slice(i, i + 4);
+    if (group.length === 4) {
+      groups.push(group);
+    }
+  }
+
+  // For each group, find the best doubles split and assign a court.
+  const matches = groups.map((group, index) => {
+    const best = scoreGrouping(group, history);
+
+    return {
+      court: courts[index],
+      teams: best.teams,
+    };
+  });
+
+  return {
+    matches,
+    sitOuts,
+  };
 }
