@@ -139,8 +139,9 @@ function generateRound(players, courts, history, config = {}) {
 
   // Players with fewer sit-outs are lower priority to play this round.
   // Players who have already sat out more often should be given preference.
+  // Sort players so that those who have sat out more often are prioritised to play this round.
   const sortedPlayers = [...players].sort(
-    (a, b) => a.sitOutCount - b.sitOutCount
+    (a, b) => b.sitOutCount - a.sitOutCount
   );
 
   // Players within capacity are selected to play this round.
