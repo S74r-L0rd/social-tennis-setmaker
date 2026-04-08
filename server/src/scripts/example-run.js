@@ -24,3 +24,24 @@ const history = {
 
 const result = generateRound(players, courts, history);
 
+console.log("=== GENERATED MATCHES ===");
+
+for (const match of result.matches) {
+  console.log(`\n${match.court}`);
+
+  console.log(
+    `Team 1: Player ${match.teams[0][0].id} + Player ${match.teams[0][1].id}`
+  );
+
+  console.log(
+    `Team 2: Player ${match.teams[1][0].id} + Player ${match.teams[1][1].id}`
+  );
+}
+
+console.log("\n=== SIT OUTS ===");
+console.log(result.sitOuts.map((p) => `Player ${p.id}`));
+
+applyRoundResults(result, history);
+
+console.log("\n=== UPDATED HISTORY ===");
+console.log(history);
