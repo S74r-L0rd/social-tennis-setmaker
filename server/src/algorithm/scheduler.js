@@ -105,6 +105,62 @@ function scoreGrouping(group, history) {
 }
 
 /**
+ * Validates the scheduler input before round generation.
+ *
+ * @param {Array<Object>} players - Players available for the round.
+ * @param {Array<string>} courts - Available courts.
+ * @param {Object} history - Historical partner and opponent data.
+ * @throws {Error} If any input is invalid.
+ */
+function validateGenerateRoundInput(players, courts, history) {
+  if (!Array.isArray(players)) {
+    throw new Error("Invalid input: players must be an array.");
+  }
+
+  if (!Array.isArray(courts)) {
+    throw new Error("Invalid input: courts must be an array.");
+  }
+
+  if (!history || typeof history !== "object") {
+    throw new Error("Invalid input: history must be an object.");
+  }
+
+  if (!history.partner || typeof history.partner !== "object") {
+    throw new Error("Invalid input: history.partner must be an object.");
+  }
+
+  if (!history.opponent || typeof history.opponent !== "object") {
+    throw new Error("Invalid input: history.opponent must be an object.");
+  }
+
+  if (courts.length === 0) {
+    throw new Error("Invalid input: at least one court is required.");
+  }
+
+  if (players.length < 4) {
+    throw new Error("Invalid input: at least 4 players are required to form a doubles match.");
+  }
+
+  for (const player of players) {
+    if (typeof player.id !== "number") {
+      throw new Error("Invalid input: each player must have a numeric id.");
+    }
+
+    if (typeof player.rating !== "number" || Number.isNaN(player.rating) || player.rating < 0) {
+      throw new Error(`Invalid input: player ${player.id} has an invalid rating.`);
+    }
+
+    if (
+      typeof player.sitOutCount !== "number" ||
+      Number.isNaN(player.sitOutCount) ||
+      player.sitOutCount < 0
+    ) {
+      throw new Error(`Invalid input: player ${player.id} has an invalid sitOutCount.`);
+    }
+  }
+}
+
+/**
  * Generates one round of doubles matches for the available courts.
  *
  * Workflow:
