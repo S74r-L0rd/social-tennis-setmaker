@@ -96,7 +96,11 @@ function scoreGrouping(group, history) {
     }
 
     // For keeping the arrangement with the highest score.
-    if (!best || score > best.score) {
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && Math.random() < 0.5)
+    ) {
       best = { score, teams: [team1, team2] };
     }
   }
