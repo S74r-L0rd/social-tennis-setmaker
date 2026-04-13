@@ -204,10 +204,15 @@ function generateRound(players, courts, history, config = {}) {
 
   // Players with fewer sit-outs are lower priority to play this round.
   // Players who have already sat out more often should be given preference.
-  // Sort players so that those who have sat out more often are prioritised to play this round.
-  const sortedPlayers = [...players].sort(
-    (a, b) => b.sitOutCount - a.sitOutCount
-  );
+  // When players have the same sitOutCount, use a random tie-breaker
+  // to avoid repeatedly disadvantaging the same player.
+  const sortedPlayers = [...players].sort((a, b) => {
+    if (b.sitOutCount !== a.sitOutCount) {
+      return b.sitOutCount - a.sitOutCount;
+    }
+
+    return Math.random() - 0.5;
+  });
 
   // Players within capacity are selected to play this round.
   const selectedPlayers = sortedPlayers.slice(0, maxPlayers);
