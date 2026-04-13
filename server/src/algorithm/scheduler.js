@@ -196,6 +196,8 @@ function validateGenerateRoundInput(players, courts, history) {
  * }} Generated round result.
  */
 function generateRound(players, courts, history, config = {}) {
+  validateGenerateRoundInput(players, courts, history);
+
   // Maximum number of players that can be scheduled this round.
   // Each court supports exactly one doubles match = 4 players.
   const maxPlayers = courts.length * 4;
