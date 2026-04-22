@@ -20,7 +20,7 @@ export default function SchedulePage() {
 
   function handleDragEnd({ active, over }) {
     if (!over || active.id === over.id) return
-    swapPlayers(currentRoundIdx, Number(active.id), Number(over.id))
+    swapPlayers(activeTab, Number(active.id), Number(over.id))
   }
 
   function handleGenerateNext() {
