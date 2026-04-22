@@ -1,38 +1,105 @@
-import { createContext, useContext, useReducer, useEffect } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { generateSchedule } from '../services/schedulerService'
 
 const SessionContext = createContext(null)
 
 const initialState = {
   sessions: [],
+  playerLibrary: [],
   currentSessionId: null,
-  isBroadcasting: false,
+  nextSessionId: 1,
+  nextPlayerId: 1,
   error: null,
 }
 
-function buildCourts(courtCount) {
-  return Array.from({ length: courtCount }, (_, i) => `Court ${i + 1}`)
+function createSessionPlayer(player) {
+  return {
+    ...player,
+    rating: Number(player.rating ?? 0),
+    plannedRounds: Number(player.plannedRounds ?? 0),
+    roundsPlayed: Number(player.roundsPlayed ?? 0),
+    sitOutCount: Number(player.sitOutCount ?? 0),
+    status: 'active',
+  }
 }
 
-function getEligiblePlayers(players) {
-  return players.filter((p) => {
-    if (p.status !== 'active') return false
-    if (p.plannedRounds > 0 && p.roundsPlayed >= p.plannedRounds) return false
-    return true
+function syncSessionPlayersWithLibrary(sessionPlayers = [], playerLibrary = []) {
+  const existingPlayersById = new Map(sessionPlayers.map(player => [player.id, player]))
+
+  return playerLibrary.map(player => {
+    const existingPlayer = existingPlayersById.get(player.id)
+    if (!existingPlayer) return createSessionPlayer(player)
+
+    return {
+      ...existingPlayer,
+      name: player.name,
+      gender: player.gender,
+      rating: Number(player.rating ?? 0),
+      plannedRounds: Number(player.plannedRounds ?? 0),
+      roundsPlayed: Number(existingPlayer.roundsPlayed ?? 0),
+      sitOutCount: Number(existingPlayer.sitOutCount ?? 0),
+    }
   })
 }
 
-function getCurrentSession(state) {
-  return state.sessions.find((session) => session.id === state.currentSessionId) || null
+function createEmptySession(config, id, playerLibrary = []) {
+  return {
+    id,
+    session: { ...config },
+    createdAt: new Date().toISOString(),
+    players: playerLibrary.map(createSessionPlayer),
+    rounds: [],
+    selectedBroadcastRoundNumber: null,
+    history: { partner: {}, opponent: {} },
+    isBroadcasting: false,
+  }
+}
+
+function getCurrentSessionRecord(state) {
+  return state.sessions.find(session => session.id === state.currentSessionId) ?? null
 }
 
 function updateCurrentSession(state, updater) {
+  if (state.currentSessionId == null) return state
+
   return {
     ...state,
-    sessions: state.sessions.map((session) =>
+    sessions: state.sessions.map(session =>
       session.id === state.currentSessionId ? updater(session) : session
     ),
   }
+}
+
+function cloneHistory(history) {
+  return {
+    partner: { ...(history?.partner || {}) },
+    opponent: { ...(history?.opponent || {}) },
+  }
+}
+
+function cloneRoundForUndo(round) {
+  return JSON.parse(JSON.stringify({
+    matches: round.matches,
+    sitOuts: round.sitOuts,
+    generatedAt: round.generatedAt ?? null,
+    historySnapshot: round.historySnapshot ?? null,
+  }))
+}
+
+function getSessionCourts(sessionConfig) {
+  if (Array.isArray(sessionConfig?.courts) && sessionConfig.courts.length > 0) return sessionConfig.courts
+  if (Number.isInteger(sessionConfig?.courtCount) && sessionConfig.courtCount > 0) {
+    return Array.from({ length: sessionConfig.courtCount }, (_, i) => `Court ${i + 1}`)
+  }
+  return []
+}
+
+function getEligiblePlayers(players) {
+  return players.filter(player => {
+    if (player.status !== 'active') return false
+    if (!Number.isInteger(player.plannedRounds) || player.plannedRounds <= 0) return true
+    return player.roundsPlayed < player.plannedRounds
+  })
 }
 
 function applyRoundToState(round, currentHistory, currentPlayers) {
@@ -43,10 +110,7 @@ function applyRoundToState(round, currentHistory, currentPlayers) {
 
   for (const match of round.matches) {
     const [team1, team2] = match.teams
-    const pairs = [
-      [team1[0], team1[1]],
-      [team2[0], team2[1]],
-    ]
+    const pairs = [[team1[0], team1[1]], [team2[0], team2[1]]]
 
     for (const [p1, p2] of pairs) {
       const key = [p1.id, p2.id].sort((a, b) => a - b).join('-')
@@ -61,16 +125,38 @@ function applyRoundToState(round, currentHistory, currentPlayers) {
     }
   }
 
-  const matchedIds = new Set(round.matches.flatMap((m) => m.teams.flat().map((p) => p.id)))
-  const sitOutIds = new Set(round.sitOuts.map((p) => p.id))
+  const matchedIds = new Set(round.matches.flatMap(match => match.teams.flat().map(player => player.id)))
+  const sitOutIds = new Set(round.sitOuts.map(player => player.id))
 
-  const updatedPlayers = currentPlayers.map((p) => ({
-    ...p,
-    roundsPlayed: matchedIds.has(p.id) ? p.roundsPlayed + 1 : p.roundsPlayed,
-    sitOutCount: sitOutIds.has(p.id) ? p.sitOutCount + 1 : p.sitOutCount,
+  const updatedPlayers = currentPlayers.map(player => ({
+    ...player,
+    roundsPlayed: matchedIds.has(player.id) ? player.roundsPlayed + 1 : player.roundsPlayed,
+    sitOutCount: sitOutIds.has(player.id) ? player.sitOutCount + 1 : player.sitOutCount,
   }))
 
   return { newHistory, updatedPlayers }
+}
+
+function getRoundPlayerPool(round) {
+  const players = []
+
+  for (const match of round.matches) {
+    for (const team of match.teams) {
+      for (const player of team) players.push(player)
+    }
+  }
+
+  for (const player of round.sitOuts) players.push(player)
+
+  return players.map(player => ({
+    id: player.id,
+    rating: player.rating,
+    sitOutCount: player.sitOutCount ?? 0,
+  }))
+}
+
+function getRoundCourts(round) {
+  return round.matches.map(match => match.court)
 }
 
 function swapPlayersInRound(round, playerIdA, playerIdB) {
@@ -78,64 +164,271 @@ function swapPlayersInRound(round, playerIdA, playerIdB) {
   let posA = null
   let posB = null
 
-  for (let mi = 0; mi < newRound.matches.length; mi++) {
-    for (let ti = 0; ti < 2; ti++) {
-      for (let pi = 0; pi < 2; pi++) {
-        const id = newRound.matches[mi].teams[ti][pi].id
-        if (id === playerIdA) posA = { type: 'match', mi, ti, pi }
-        if (id === playerIdB) posB = { type: 'match', mi, ti, pi }
+  for (let matchIndex = 0; matchIndex < newRound.matches.length; matchIndex++) {
+    for (let teamIndex = 0; teamIndex < 2; teamIndex++) {
+      for (let playerIndex = 0; playerIndex < 2; playerIndex++) {
+        const id = newRound.matches[matchIndex].teams[teamIndex][playerIndex].id
+        if (id === playerIdA) posA = { type: 'match', matchIndex, teamIndex, playerIndex }
+        if (id === playerIdB) posB = { type: 'match', matchIndex, teamIndex, playerIndex }
       }
     }
   }
 
-  for (let si = 0; si < newRound.sitOuts.length; si++) {
-    const id = newRound.sitOuts[si].id
-    if (id === playerIdA) posA = { type: 'sitout', si }
-    if (id === playerIdB) posB = { type: 'sitout', si }
+  for (let sitOutIndex = 0; sitOutIndex < newRound.sitOuts.length; sitOutIndex++) {
+    const id = newRound.sitOuts[sitOutIndex].id
+    if (id === playerIdA) posA = { type: 'sitout', sitOutIndex }
+    if (id === playerIdB) posB = { type: 'sitout', sitOutIndex }
   }
 
   if (!posA || !posB) return round
 
-  const getPlayerAtPos = (pos) =>
-    pos.type === 'match'
-      ? newRound.matches[pos.mi].teams[pos.ti][pos.pi]
-      : newRound.sitOuts[pos.si]
+  const getPlayer = (position) => position.type === 'match'
+    ? newRound.matches[position.matchIndex].teams[position.teamIndex][position.playerIndex]
+    : newRound.sitOuts[position.sitOutIndex]
 
-  const setPlayerAtPos = (pos, player) => {
-    if (pos.type === 'match') {
-      newRound.matches[pos.mi].teams[pos.ti][pos.pi] = player
+  const setPlayer = (position, player) => {
+    if (position.type === 'match') {
+      newRound.matches[position.matchIndex].teams[position.teamIndex][position.playerIndex] = player
     } else {
-      newRound.sitOuts[pos.si] = player
+      newRound.sitOuts[position.sitOutIndex] = player
     }
   }
 
-  const playerA = { ...getPlayerAtPos(posA) }
-  const playerB = { ...getPlayerAtPos(posB) }
-
-  setPlayerAtPos(posA, playerB)
-  setPlayerAtPos(posB, playerA)
-
+  const playerA = { ...getPlayer(posA) }
+  const playerB = { ...getPlayer(posB) }
+  setPlayer(posA, playerB)
+  setPlayer(posB, playerA)
   return newRound
+}
+
+function buildPlayerDatabase(sessions, playerLibrary) {
+  const statsByPlayerId = new Map(
+    playerLibrary.map(player => [player.id, {
+      id: player.id,
+      name: player.name,
+      gender: player.gender,
+      rating: player.rating,
+      plannedRounds: player.plannedRounds ?? 0,
+      totalSitOuts: 0,
+      totalMatches: 0,
+      totalUnbalancedMatches: 0,
+      sessionCount: 0,
+      partners: new Map(),
+    }])
+  )
+
+  for (const session of sessions) {
+    const seenInSession = new Set()
+
+    for (const player of session.players ?? []) {
+      const entry = statsByPlayerId.get(player.id)
+      if (!entry) continue
+      seenInSession.add(player.id)
+    }
+
+    for (const playerId of seenInSession) {
+      const entry = statsByPlayerId.get(playerId)
+      if (entry) entry.sessionCount += 1
+    }
+
+    for (const round of session.rounds ?? []) {
+      const countedPlayersInRound = new Set()
+
+      for (const match of round.matches ?? []) {
+        const [teamA, teamB] = match.teams ?? []
+        const teamARating = (teamA ?? []).reduce((sum, player) => sum + (player.rating ?? 0), 0)
+        const teamBRating = (teamB ?? []).reduce((sum, player) => sum + (player.rating ?? 0), 0)
+        const isUnbalancedMatch = Math.abs(teamARating - teamBRating) >= 2
+
+        for (const team of match.teams ?? []) {
+          if (team.length !== 2) continue
+          const [playerA, playerB] = team
+          const entryA = statsByPlayerId.get(playerA.id)
+          const entryB = statsByPlayerId.get(playerB.id)
+
+          if (entryA && !countedPlayersInRound.has(playerA.id)) {
+            entryA.totalMatches += 1
+            countedPlayersInRound.add(playerA.id)
+          }
+          if (entryB && !countedPlayersInRound.has(playerB.id)) {
+            entryB.totalMatches += 1
+            countedPlayersInRound.add(playerB.id)
+          }
+
+          if (entryA) {
+            entryA.partners.set(playerB.id, (entryA.partners.get(playerB.id) ?? 0) + 1)
+          }
+          if (entryB) {
+            entryB.partners.set(playerA.id, (entryB.partners.get(playerA.id) ?? 0) + 1)
+          }
+
+          if (isUnbalancedMatch) {
+            if (entryA) entryA.totalUnbalancedMatches += 1
+            if (entryB) entryB.totalUnbalancedMatches += 1
+          }
+        }
+      }
+
+      for (const player of round.sitOuts ?? []) {
+        const entry = statsByPlayerId.get(player.id)
+        if (!entry || countedPlayersInRound.has(player.id)) continue
+        entry.totalSitOuts += 1
+        countedPlayersInRound.add(player.id)
+      }
+    }
+  }
+
+  return Array.from(statsByPlayerId.values())
+    .map(entry => {
+      let commonPartner = null
+
+      for (const [partnerId, count] of entry.partners.entries()) {
+        const partner = playerLibrary.find(player => player.id === partnerId)
+        if (!partner) continue
+
+        if (!commonPartner || count > commonPartner.count || (count === commonPartner.count && partner.name < commonPartner.name)) {
+          commonPartner = { id: partnerId, name: partner.name, count }
+        }
+      }
+
+      return {
+        id: entry.id,
+        name: entry.name,
+        gender: entry.gender,
+        rating: entry.rating,
+        plannedRounds: entry.plannedRounds,
+        totalSitOuts: entry.totalSitOuts,
+        totalMatches: entry.totalMatches,
+        totalUnbalancedMatches: entry.totalUnbalancedMatches,
+        sessionCount: entry.sessionCount,
+        commonPartnerName: commonPartner?.name ?? 'No partner data yet',
+        commonPartnerCount: commonPartner?.count ?? 0,
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function normalizeSessionRecord(session, fallbackId) {
+  if (session?.session) {
+    return {
+      ...session,
+      id: session.id ?? fallbackId,
+      session: { ...session.session },
+      players: session.players ?? [],
+      rounds: session.rounds ?? [],
+      selectedBroadcastRoundNumber: session.selectedBroadcastRoundNumber ?? null,
+      history: session.history ?? { partner: {}, opponent: {} },
+      isBroadcasting: session.isBroadcasting ?? false,
+      createdAt: session.createdAt ?? new Date().toISOString(),
+    }
+  }
+
+  return {
+    id: session.id ?? fallbackId,
+    session: {
+      name: session.name ?? 'Untitled Session',
+      sessionDate: session.sessionDate,
+      sessionPeriod: session.sessionPeriod,
+      courtCount: session.courtCount,
+      courts: session.courts,
+      startDateTime: session.startDateTime,
+      matchDurationMinutes: session.matchDurationMinutes,
+      breakIntervalMinutes: session.breakIntervalMinutes,
+      gameMode: session.gameMode,
+    },
+    createdAt: session.createdAt ?? new Date().toISOString(),
+    players: session.players ?? [],
+    rounds: session.rounds ?? [],
+    selectedBroadcastRoundNumber: session.selectedBroadcastRoundNumber ?? null,
+    history: session.history ?? { partner: {}, opponent: {} },
+    isBroadcasting: session.isBroadcasting ?? false,
+  }
+}
+
+function migrateLegacyState(saved) {
+  if (!saved || typeof saved !== 'object') return initialState
+
+  if (Array.isArray(saved.sessions)) {
+    const normalizedSessions = saved.sessions.map((session, index) => normalizeSessionRecord(session, index + 1))
+
+    const playerMap = new Map()
+    for (const session of normalizedSessions) {
+      for (const player of session.players ?? []) {
+        if (!playerMap.has(player.id)) {
+          playerMap.set(player.id, {
+            id: player.id,
+            name: player.name,
+            gender: player.gender,
+            rating: Number(player.rating ?? 0),
+            plannedRounds: Number(player.plannedRounds ?? 0),
+          })
+        }
+      }
+    }
+
+    const playerLibrary = saved.playerLibrary ?? Array.from(playerMap.values())
+    const maxPlayerId = Math.max(0, ...playerLibrary.map(player => player.id))
+    const maxSessionId = Math.max(0, ...normalizedSessions.map(session => session.id))
+
+    return {
+      ...initialState,
+      playerLibrary,
+      sessions: normalizedSessions.map(session => ({
+        ...session,
+        players: syncSessionPlayersWithLibrary(session.players, playerLibrary),
+      })),
+      currentSessionId: saved.currentSessionId ?? normalizedSessions[0]?.id ?? null,
+      nextSessionId: saved.nextSessionId ?? maxSessionId + 1,
+      nextPlayerId: saved.nextPlayerId ?? maxPlayerId + 1,
+      error: saved.error ?? null,
+    }
+  }
+
+  if (!saved.session) {
+    return { ...initialState }
+  }
+
+  const legacyPlayers = (saved.players ?? []).map(player => ({
+    id: player.id,
+    name: player.name,
+    gender: player.gender,
+    rating: Number(player.rating ?? 0),
+    plannedRounds: Number(player.plannedRounds ?? 0),
+  }))
+
+  const migratedSession = {
+    id: 1,
+    session: saved.session,
+    createdAt: saved.session.createdAt ?? new Date().toISOString(),
+    players: saved.players ?? [],
+    rounds: saved.rounds ?? [],
+    selectedBroadcastRoundNumber: saved.selectedBroadcastRoundNumber ?? null,
+    history: saved.history ?? { partner: {}, opponent: {} },
+    isBroadcasting: saved.isBroadcasting ?? false,
+  }
+
+  return {
+    sessions: [migratedSession],
+    playerLibrary: legacyPlayers,
+    currentSessionId: 1,
+    nextSessionId: 2,
+    nextPlayerId: saved.nextPlayerId ?? (legacyPlayers.reduce((maxId, player) => Math.max(maxId, player.id), 0) + 1),
+    error: saved.error ?? null,
+  }
 }
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'CREATE_SESSION': {
-      const newSession = {
-        id: Date.now(),
-        ...action.payload,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        nextPlayerId: 1,
-        players: [],
-        rounds: [],
-        history: { partner: {}, opponent: {} },
-      }
+    case 'LOAD_STATE':
+      return action.payload
 
+    case 'SET_SESSION': {
+      const sessionRecord = createEmptySession(action.payload, state.nextSessionId, state.playerLibrary)
       return {
         ...state,
-        sessions: [...state.sessions, newSession],
-        currentSessionId: newSession.id,
+        sessions: [...state.sessions, sessionRecord],
+        currentSessionId: sessionRecord.id,
+        nextSessionId: state.nextSessionId + 1,
         error: null,
       }
     }
@@ -147,15 +440,17 @@ function reducer(state, action) {
         error: null,
       }
 
-    case 'UPDATE_SESSION':
+    case 'UPDATE_SESSION_CONFIG':
       return {
         ...state,
-        sessions: state.sessions.map((session) =>
-          session.id === action.payload.id
+        sessions: state.sessions.map(session =>
+          session.id === action.payload.sessionId
             ? {
                 ...session,
-                ...action.payload.updates,
-                updatedAt: new Date().toISOString(),
+                session: {
+                  ...session.session,
+                  ...action.payload.updates,
+                },
               }
             : session
         ),
@@ -163,110 +458,187 @@ function reducer(state, action) {
       }
 
     case 'DELETE_SESSION': {
-      const remainingSessions = state.sessions.filter(
-        (session) => session.id !== action.payload
-      )
+      const sessions = state.sessions.filter(session => session.id !== action.payload)
+      if (sessions.length === 0) {
+        return {
+          ...state,
+          sessions: [],
+          currentSessionId: null,
+          error: null,
+        }
+      }
+
+      const currentSessionId = state.currentSessionId === action.payload
+        ? sessions[sessions.length - 1].id
+        : state.currentSessionId
 
       return {
         ...state,
-        sessions: remainingSessions,
-        currentSessionId:
-          state.currentSessionId === action.payload
-            ? remainingSessions[0]?.id || null
-            : state.currentSessionId,
+        sessions,
+        currentSessionId,
         error: null,
       }
     }
 
     case 'ADD_PLAYER':
-      return updateCurrentSession(state, (session) => {
-        const player = {
-          ...action.payload,
-          id: session.nextPlayerId,
-          sitOutCount: 0,
-          roundsPlayed: 0,
-          status: 'active',
-        }
-
-        return {
+      return {
+        ...state,
+        playerLibrary: [
+          ...state.playerLibrary,
+          {
+            ...action.payload,
+            id: state.nextPlayerId,
+          },
+        ],
+        sessions: state.sessions.map(session => ({
           ...session,
-          players: [...session.players, player],
-          nextPlayerId: session.nextPlayerId + 1,
-          updatedAt: new Date().toISOString(),
-        }
-      })
+          players: [...session.players, createSessionPlayer({
+            ...action.payload,
+            id: state.nextPlayerId,
+          })],
+        })),
+        nextPlayerId: state.nextPlayerId + 1,
+      }
 
     case 'UPDATE_PLAYER':
-      return updateCurrentSession(state, (session) => ({
-        ...session,
-        players: session.players.map((p) =>
-          p.id === action.payload.id ? { ...p, ...action.payload.updates } : p
+      return {
+        ...state,
+        playerLibrary: state.playerLibrary.map(player =>
+          player.id === action.payload.id ? { ...player, ...action.payload.updates } : player
         ),
-        updatedAt: new Date().toISOString(),
-      }))
+        sessions: state.sessions.map(session => ({
+          ...session,
+          players: session.players.map(player =>
+            player.id === action.payload.id ? { ...player, ...action.payload.updates } : player
+          ),
+        })),
+      }
 
     case 'REMOVE_PLAYER':
-      return updateCurrentSession(state, (session) => ({
+      return updateCurrentSession(state, session => ({
         ...session,
-        players: session.players.filter((p) => p.id !== action.payload),
-        updatedAt: new Date().toISOString(),
+        players: session.players.filter(player => player.id !== action.payload),
       }))
 
     case 'TOGGLE_PLAYER_STATUS':
-      return updateCurrentSession(state, (session) => ({
+      return updateCurrentSession(state, session => ({
         ...session,
-        players: session.players.map((p) =>
-          p.id === action.payload
-            ? { ...p, status: p.status === 'active' ? 'resting' : 'active' }
-            : p
+        players: session.players.map(player =>
+          player.id === action.payload
+            ? { ...player, status: player.status === 'active' ? 'resting' : 'active' }
+            : player
         ),
-        updatedAt: new Date().toISOString(),
       }))
 
     case 'SET_FIRST_ROUND':
-      return updateCurrentSession(state, (session) => ({
-        ...session,
-        rounds: [{ ...action.payload, roundNumber: 1, isConfirmed: false }],
-        updatedAt: new Date().toISOString(),
-      }))
+      return updateCurrentSession(state, session => {
+        const nextRound = action.payload
+        return {
+          ...session,
+          rounds: [nextRound],
+          selectedBroadcastRoundNumber: nextRound.roundNumber,
+        }
+      })
+
+    case 'GENERATE_ROUND_FROM_PLAYERS_RESULT':
+      return updateCurrentSession(state, session => {
+        const nextRound = action.payload
+        const existingRounds = session.rounds.map((round, index) =>
+          index === session.rounds.length - 1 ? { ...round, isConfirmed: true } : round
+        )
+
+        return {
+          ...session,
+          rounds: [...existingRounds, nextRound],
+          selectedBroadcastRoundNumber: nextRound.roundNumber,
+        }
+      })
 
     case 'SET_NEXT_ROUND':
-      return updateCurrentSession(state, (session) => {
-        const confirmedRounds = session.rounds.map((r, i) =>
-          i === session.rounds.length - 1 ? { ...r, isConfirmed: true } : r
+      return updateCurrentSession(state, session => {
+        const confirmedRounds = session.rounds.map((round, index) =>
+          index === session.rounds.length - 1 ? { ...round, isConfirmed: true } : round
         )
+
+        const rounds = action.payload.result
+          ? [...confirmedRounds, action.payload.result]
+          : confirmedRounds
 
         return {
           ...session,
           players: action.payload.updatedPlayers,
           history: action.payload.newHistory,
-          rounds: [
-            ...confirmedRounds,
-            {
-              ...action.payload.result,
-              roundNumber: session.rounds.length + 1,
-              isConfirmed: false,
-            },
-          ],
-          updatedAt: new Date().toISOString(),
+          rounds,
+          selectedBroadcastRoundNumber: rounds[rounds.length - 1]?.roundNumber ?? null,
         }
       })
 
     case 'SWAP_PLAYERS':
-      return updateCurrentSession(state, (session) => {
-        const { roundIdx, playerIdA, playerIdB } = action.payload
+      return updateCurrentSession(state, session => {
         const rounds = [...session.rounds]
-        rounds[roundIdx] = swapPlayersInRound(rounds[roundIdx], playerIdA, playerIdB)
-
-        return {
-          ...session,
-          rounds,
-          updatedAt: new Date().toISOString(),
-        }
+        rounds[action.payload.roundIdx] = swapPlayersInRound(
+          rounds[action.payload.roundIdx],
+          action.payload.playerIdA,
+          action.payload.playerIdB
+        )
+        return { ...session, rounds }
       })
 
+    case 'RESHUFFLE_ROUND_RESULT':
+      return updateCurrentSession(state, session => {
+        const round = session.rounds[action.payload.roundIdx]
+        if (!round) return session
+
+        const rounds = [...session.rounds]
+        rounds[action.payload.roundIdx] = {
+          ...round,
+          ...action.payload.result,
+          generatedAt: new Date().toISOString(),
+          reshuffleUndoSnapshot: cloneRoundForUndo(round),
+        }
+
+        return { ...session, rounds }
+      })
+
+    case 'UNDO_RESHUFFLE_ROUND':
+      return updateCurrentSession(state, session => {
+        const round = session.rounds[action.payload]
+        if (!round?.reshuffleUndoSnapshot) return session
+
+        const rounds = [...session.rounds]
+        rounds[action.payload] = {
+          ...round,
+          ...round.reshuffleUndoSnapshot,
+          reshuffleUndoSnapshot: null,
+        }
+
+        return { ...session, rounds }
+      })
+
+    case 'SET_BROADCAST_ROUND':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        selectedBroadcastRoundNumber: action.payload,
+      }))
+
+    case 'CLEAR_SCHEDULE':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        players: session.players.map(player => ({
+          ...player,
+          roundsPlayed: 0,
+          sitOutCount: 0,
+        })),
+        rounds: [],
+        selectedBroadcastRoundNumber: null,
+        history: { partner: {}, opponent: {} },
+      }))
+
     case 'TOGGLE_BROADCAST':
-      return { ...state, isBroadcasting: !state.isBroadcasting }
+      return updateCurrentSession(state, session => ({
+        ...session,
+        isBroadcasting: !session.isBroadcasting,
+      }))
 
     case 'SET_ERROR':
       return { ...state, error: action.payload }
@@ -275,7 +647,11 @@ function reducer(state, action) {
       return { ...state, error: null }
 
     case 'RESET':
-      return initialState
+      return {
+        ...state,
+        currentSessionId: null,
+        error: null,
+      }
 
     default:
       return state
@@ -284,21 +660,47 @@ function reducer(state, action) {
 
 const STORAGE_KEY = 'social-tennis-session'
 
+async function generateRoundForSession(sessionRecord, historyOverride = null) {
+  const eligible = getEligiblePlayers(sessionRecord.players)
+  const courts = getSessionCourts(sessionRecord.session)
+  const history = historyOverride ?? sessionRecord.history
+  const algorithmPlayers = eligible.map(player => ({
+    id: player.id,
+    rating: player.rating,
+    sitOutCount: player.sitOutCount,
+  }))
+
+  const result = await generateSchedule(algorithmPlayers, courts, history)
+
+  return {
+    ...result,
+    roundNumber: sessionRecord.rounds.length + 1,
+    isConfirmed: false,
+    generatedAt: new Date().toISOString(),
+    historySnapshot: cloneHistory(history),
+    reshuffleUndoSnapshot: null,
+  }
+}
+
 export function SessionProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState, () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      return saved ? JSON.parse(saved) : initialState
+      return saved ? migrateLegacyState(JSON.parse(saved)) : initialState
     } catch {
       return initialState
     }
   })
 
-  const currentSession = getCurrentSession(state)
-
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
+
+  const currentSession = useMemo(() => getCurrentSessionRecord(state), [state])
+  const playerDatabase = useMemo(
+    () => buildPlayerDatabase(state.sessions, state.playerLibrary),
+    [state.sessions, state.playerLibrary]
+  )
 
   async function generateFirstRound() {
     try {
@@ -307,23 +709,35 @@ export function SessionProvider({ children }) {
         return
       }
 
-      const eligible = getEligiblePlayers(currentSession.players)
-      const courts = buildCourts(currentSession.courtCount)
-      const algorithmPlayers = eligible.map((p) => ({
-        id: p.id,
-        rating: p.rating,
-        sitOutCount: p.sitOutCount,
-      }))
+      const nextRound = await generateRoundForSession(currentSession)
+      dispatch({ type: 'SET_FIRST_ROUND', payload: nextRound })
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
+    }
+  }
 
-      const result = await generateSchedule(
-        algorithmPlayers,
-        courts,
-        currentSession.history
-      )
+  async function generateRoundFromPlayers() {
+    try {
+      if (!currentSession) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return false
+      }
 
-      dispatch({ type: 'SET_FIRST_ROUND', payload: result })
-    } catch (e) {
-      dispatch({ type: 'SET_ERROR', payload: e.message })
+      const roundSeedSession = currentSession.rounds.length === 0
+        ? currentSession
+        : {
+            ...currentSession,
+            rounds: currentSession.rounds.map((round, index) =>
+              index === currentSession.rounds.length - 1 ? { ...round, isConfirmed: true } : round
+            ),
+          }
+
+      const nextRound = await generateRoundForSession(roundSeedSession)
+      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: nextRound })
+      return true
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
+      return false
     }
   }
 
@@ -335,90 +749,118 @@ export function SessionProvider({ children }) {
       }
 
       const currentRound = currentSession.rounds[currentSession.rounds.length - 1]
-
       if (!currentRound) {
         dispatch({ type: 'SET_ERROR', payload: 'No current round available.' })
         return
       }
 
-      const { newHistory, updatedPlayers } = applyRoundToState(
-        currentRound,
-        currentSession.history,
-        currentSession.players
-      )
-
+      const { newHistory, updatedPlayers } = applyRoundToState(currentRound, currentSession.history, currentSession.players)
       const eligible = getEligiblePlayers(updatedPlayers)
-      const courts = buildCourts(currentSession.courtCount)
-      const algorithmPlayers = eligible.map((p) => ({
-        id: p.id,
-        rating: p.rating,
-        sitOutCount: p.sitOutCount,
-      }))
 
-      const result = await generateSchedule(
-        algorithmPlayers,
-        courts,
+      if (eligible.length < 4) {
+        dispatch({
+          type: 'SET_NEXT_ROUND',
+          payload: { updatedPlayers, newHistory, result: null },
+        })
+        return
+      }
+
+      const nextRound = await generateRoundForSession(
+        { ...currentSession, players: updatedPlayers, history: newHistory, rounds: currentSession.rounds },
         newHistory
       )
 
       dispatch({
         type: 'SET_NEXT_ROUND',
-        payload: { updatedPlayers, newHistory, result },
+        payload: { updatedPlayers, newHistory, result: nextRound },
       })
-    } catch (e) {
-      dispatch({ type: 'SET_ERROR', payload: e.message })
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
     }
   }
 
-  const actions = {
-    createSession: (session) =>
-      dispatch({ type: 'CREATE_SESSION', payload: session }),
-    selectSession: (id) =>
-      dispatch({ type: 'SELECT_SESSION', payload: id }),
-    updateSession: (id, updates) =>
-      dispatch({ type: 'UPDATE_SESSION', payload: { id, updates } }),
-    deleteSession: (id) =>
-      dispatch({ type: 'DELETE_SESSION', payload: id }),
+  async function reshuffleRound(roundIdx) {
+    try {
+      if (!currentSession) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return
+      }
 
-    addPlayer: (player) =>
-      dispatch({ type: 'ADD_PLAYER', payload: player }),
-    updatePlayer: (id, updates) =>
-      dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } }),
-    removePlayer: (id) =>
-      dispatch({ type: 'REMOVE_PLAYER', payload: id }),
-    togglePlayerStatus: (id) =>
-      dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: id }),
+      const round = currentSession.rounds[roundIdx]
+      if (!round) return
 
-    generateFirstRound,
-    confirmAndGenerateNext,
+      const result = await generateSchedule(
+        getRoundPlayerPool(round),
+        getRoundCourts(round),
+        cloneHistory(round.historySnapshot ?? currentSession.history)
+      )
 
-    swapPlayers: (roundIdx, playerIdA, playerIdB) =>
       dispatch({
-        type: 'SWAP_PLAYERS',
-        payload: { roundIdx, playerIdA, playerIdB },
-      }),
+        type: 'RESHUFFLE_ROUND_RESULT',
+        payload: { roundIdx, result },
+      })
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
+    }
+  }
 
-    toggleBroadcast: () =>
-      dispatch({ type: 'TOGGLE_BROADCAST' }),
-    clearError: () =>
-      dispatch({ type: 'CLEAR_ERROR' }),
-    reset: () =>
-      dispatch({ type: 'RESET' }),
-    getPlayerById: (id) =>
-      currentSession?.players.find((p) => p.id === id),
+  const publicState = {
+    sessions: state.sessions.map(session => ({
+      id: session.id,
+      createdAt: session.createdAt,
+      session: session.session,
+      roundsCount: session.rounds.length,
+      playersCount: session.players.length,
+    })),
+    currentSessionId: state.currentSessionId,
+    session: currentSession?.session ?? null,
+    players: currentSession?.players ?? [],
+    rounds: currentSession?.rounds ?? [],
+    selectedBroadcastRoundNumber: currentSession?.selectedBroadcastRoundNumber ?? null,
+    history: currentSession?.history ?? { partner: {}, opponent: {} },
+    isBroadcasting: currentSession?.isBroadcasting ?? false,
+    playerLibrary: state.playerLibrary,
+    playerDatabase,
+    error: state.error,
+  }
+
+  const actions = {
+    setSession: (session) => dispatch({ type: 'SET_SESSION', payload: session }),
+    createSession: (session) => dispatch({ type: 'SET_SESSION', payload: session }),
+    selectSession: (sessionId) => dispatch({ type: 'SELECT_SESSION', payload: sessionId }),
+    updateSessionConfig: (sessionId, updates) =>
+      dispatch({ type: 'UPDATE_SESSION_CONFIG', payload: { sessionId, updates } }),
+    updateSession: (sessionId, updates) =>
+      dispatch({ type: 'UPDATE_SESSION_CONFIG', payload: { sessionId, updates } }),
+    deleteSession: (sessionId) => dispatch({ type: 'DELETE_SESSION', payload: sessionId }),
+    addPlayer: (player) => dispatch({ type: 'ADD_PLAYER', payload: player }),
+    updatePlayer: (id, updates) => dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } }),
+    removePlayer: (id) => dispatch({ type: 'REMOVE_PLAYER', payload: id }),
+    togglePlayerStatus: (id) => dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: id }),
+    generateFirstRound,
+    generateRoundFromPlayers,
+    confirmAndGenerateNext,
+    clearSchedule: () => dispatch({ type: 'CLEAR_SCHEDULE' }),
+    setBroadcastRound: (roundNumber) => dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber }),
+    reshuffleRound,
+    undoReshuffleRound: (roundIdx) => dispatch({ type: 'UNDO_RESHUFFLE_ROUND', payload: roundIdx }),
+    swapPlayers: (roundIdx, playerIdA, playerIdB) =>
+      dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } }),
+    toggleBroadcast: () => dispatch({ type: 'TOGGLE_BROADCAST' }),
+    clearError: () => dispatch({ type: 'CLEAR_ERROR' }),
+    reset: () => dispatch({ type: 'RESET' }),
+    getPlayerById: (id) => currentSession?.players.find(player => player.id === id),
   }
 
   return (
-    <SessionContext.Provider value={{ state, currentSession, ...actions }}>
+    <SessionContext.Provider value={{ state: publicState, currentSession, ...actions }}>
       {children}
     </SessionContext.Provider>
   )
 }
 
 export function useSession() {
-  const ctx = useContext(SessionContext)
-  if (!ctx) {
-    throw new Error('useSession must be used within SessionProvider')
-  }
-  return ctx
+  const context = useContext(SessionContext)
+  if (!context) throw new Error('useSession must be used within SessionProvider')
+  return context
 }

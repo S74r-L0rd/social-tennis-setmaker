@@ -36,7 +36,7 @@ export default function PlayerToken({ playerId, disabled = false }) {
       </span>
       <span className="text-base font-bold text-gray-800 truncate">{player.name}</span>
       <span className={`text-sm font-black ml-auto ${RATING_COLOR[player.rating] ?? 'text-gray-400'}`}>
-        {player.rating}
+        {`Lv.${player.rating}`}
       </span>
     </div>
   )

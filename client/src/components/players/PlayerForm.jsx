@@ -1,11 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const EMPTY = { name: '', gender: 'male', rating: 2, plannedRounds: 0 }
+const ROUND_OPTIONS = [
+  { value: 0, label: 'All' },
+  ...Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
+]
 
 export default function PlayerForm({ onSubmit, initialValues = null, onCancel }) {
   const [form, setForm] = useState(initialValues ?? EMPTY)
   const [errors, setErrors] = useState({})
   const isEdit = Boolean(initialValues)
+
+  useEffect(() => {
+    setForm(initialValues ?? EMPTY)
+    setErrors({})
+  }, [initialValues])
 
   function validate() {
     const e = {}
@@ -85,14 +94,18 @@ export default function PlayerForm({ onSubmit, initialValues = null, onCancel })
 
       {/* Planned rounds */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-black text-gray-500 uppercase tracking-wide">
-          Rounds to Play <span className="normal-case font-normal">(0 = all)</span>
-        </label>
-        <input
-          type="number" min={0}
-          value={form.plannedRounds} onChange={e => set('plannedRounds', e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm"
-        />
+        <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Rounds to Play</label>
+        <select
+          value={form.plannedRounds}
+          onChange={e => set('plannedRounds', e.target.value)}
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
+        >
+          {ROUND_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex gap-3 pt-1">
