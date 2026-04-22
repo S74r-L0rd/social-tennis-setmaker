@@ -19,9 +19,10 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { n: '1', title: 'Set up your session', desc: 'Name your session, pick the number of courts, and choose a format.' },
-  { n: '2', title: 'Add your players', desc: 'Enter names, skill ratings, and gender as players arrive. Latecomers welcome.' },
-  { n: '3', title: 'Generate & broadcast', desc: 'Hit generate, confirm the round, and share the QR code. Done.' },
+  { n: '1', title: 'Set up the session', desc: 'Create the session, choose the court count, and set the timing for each round.' },
+  { n: '2', title: 'Add players', desc: 'Enter player names, ratings, and gender settings, then keep updating the list as people arrive.' },
+  { n: '3', title: 'Generate the round', desc: 'Build the doubles matchups, review the court assignments, and adjust swaps if needed.' },
+  { n: '4', title: 'Broadcast to players', desc: 'Open the broadcast page and share the QR code or link so everyone can check their court instantly.' },
 ]
 
 function UnderlinedWord({ children }) {
@@ -52,15 +53,25 @@ export default function HomePage() {
           <UnderlinedWord>smarter</UnderlinedWord>{' '}
           sessions
         </h1>
-        <p className="text-xl text-gray-600 max-w-xl leading-relaxed">
-          Generate fair, varied doubles matchups for your tennis club — fast. No spreadsheets, no guesswork.
+        <p className="text-base sm:text-lg text-gray-600 max-w-2xl leading-relaxed">
+          Generate fair and varied doubles matchups for your tennis sessions.
+          <br />
+          Manage players and organise each round with less guesswork.
         </p>
-        <button
-          onClick={() => navigate('/setup')}
-          style={{ backgroundColor: '#e8503a' }}
-          className="px-10 py-4 rounded-xl text-white font-black text-base shadow-sm hover:shadow-md hover:brightness-90 active:scale-[0.98] transition-all duration-200">
-          Start Session →
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <button
+            onClick={() => navigate('/auth')}
+            className="px-8 py-4 rounded-xl text-green-900 font-black text-base border border-green-900/15 bg-white shadow-sm hover:shadow-md hover:border-green-900/30 active:scale-[0.98] transition-all duration-200"
+          >
+            Log In
+          </button>
+          <button
+            onClick={() => navigate('/setup')}
+            style={{ backgroundColor: '#e8503a' }}
+            className="px-10 py-4 rounded-xl text-white font-black text-base shadow-sm hover:shadow-md hover:brightness-90 active:scale-[0.98] transition-all duration-200">
+            Start New Session →
+          </button>
+        </div>
       </div>
 
       {/* Features */}
@@ -88,16 +99,50 @@ export default function HomePage() {
       {/* How it works */}
       <div className="flex flex-col gap-8 animate-slide-up">
         <h2 className="text-3xl font-black text-green-900">How it works</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {STEPS.map(s => (
-            <div key={s.n} className="flex flex-col gap-3">
-              <span className="text-3xl font-black text-gray-200">{s.n}</span>
+            <div key={s.n} className="bg-white rounded-2xl border border-green-100 shadow-sm p-6 flex flex-col gap-4">
+              <span className="w-14 h-14 rounded-full bg-green-900 text-white text-2xl font-black flex items-center justify-center shadow-sm">
+                {s.n}
+              </span>
               <h3 className="text-base font-black text-green-900">{s.title}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{s.desc}</p>
             </div>
           ))}
         </div>
       </div>
+
+      <footer className="bg-green-900 w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] px-8 pt-10 pb-6 animate-slide-up">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-[1.4fr_auto] gap-10 items-start">
+          <div className="flex flex-col gap-3">
+            <h3 className="text-lg font-black text-white">Contact us</h3>
+            <p className="text-sm text-green-100 leading-relaxed max-w-md">
+              We would like to hear your feedback on Social Tennis Setmaker.
+              If you have suggestions or hit any issues, send us a note.
+            </p>
+            <a
+              href="mailto:UWA_group07@setmaker.com"
+              className="text-sm font-black text-coral-300 hover:text-coral-200 transition-colors"
+            >
+              UWA_group07@setmaker.com
+            </a>
+          </div>
+
+          <div className="flex flex-col gap-6 md:items-end md:text-right">
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-bold text-white">© 2026 Social Tennis Setmaker</p>
+              <p className="text-sm text-green-100">Developed for CITS5206 Project</p>
+              <p className="text-sm text-green-100">Made in Perth, Australia</p>
+            </div>
+            <a
+              href="mailto:UWA_group07@setmaker.com?subject=SetMaker%20Feedback"
+              className="inline-flex w-fit items-center justify-center rounded-xl border border-green-100 px-5 py-3 text-sm font-black text-green-100 hover:bg-white/10 transition-all duration-200"
+            >
+              Give feedback
+            </a>
+          </div>
+        </div>
+      </footer>
 
     </div>
   )
