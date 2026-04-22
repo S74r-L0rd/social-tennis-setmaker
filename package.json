@@ -1,12 +1,10 @@
 {
   "name": "social-tennis-setmaker",
-  "version": "1.0.0",
-  "description": "Social Tennis Setmaker scheduling engine",
-  "main": "server/src/algorithm/scheduler.js",
+  "private": true,
   "scripts": {
-    "test": "node server/tests/scheduler.test.js",
-    "run-example": "node server/src/scripts/example-run.js"
-  },
-  "author": "",
-  "license": "ISC"
+    "client": "cd client && npm run dev",
+    "server": "cd server && npm run dev",
+    "test-server": "cd server && npm test",
+    "run-example": "cd server && npm run run-example"
+  }
 }
