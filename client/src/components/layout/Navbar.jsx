@@ -43,7 +43,7 @@ export default function Navbar() {
                     isActive
                       ? 'bg-coral-500 text-white shadow-sm'
                       : isDone
-                      ? 'text-coral-300 hover:text-white hover:bg-white/10'
+                      ? 'text-green-200 hover:text-white hover:bg-white/10'
                       : 'text-green-400 hover:text-white hover:bg-white/5'
                   }`}
                 >

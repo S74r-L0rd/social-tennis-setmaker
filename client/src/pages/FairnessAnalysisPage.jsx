@@ -262,7 +262,7 @@ export default function FairnessAnalysisPage() {
 
   return (
     <div className="mx-auto max-w-7xl animate-fade-in">
-      <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mb-8 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-widest text-coral-500">Player History</p>
           <h1 className="mt-2 text-3xl font-black text-green-900">Fairness Dashboard</h1>
@@ -271,7 +271,7 @@ export default function FairnessAnalysisPage() {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-[minmax(280px,1fr)_180px_180px] lg:min-w-[740px]">
+        <div className="grid gap-3 md:grid-cols-2 xl:min-w-[740px] xl:grid-cols-[minmax(280px,1fr)_180px_180px]">
           <div className="relative">
             <svg
               className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"

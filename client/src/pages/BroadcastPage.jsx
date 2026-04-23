@@ -5,6 +5,7 @@ import { RatingBadge, GenderBadge } from '../components/ui/Badge'
 import { DEFAULT_MATCH_DURATION_MINUTES, formatRoundStartLabel, getRoundStartDate } from '../utils/roundSchedule'
 
 const SESSION_STATES = [
+  { key: 'all', label: 'All Rounds' },
   { key: 'upcoming', label: 'Upcoming Session' },
   { key: 'in_progress', label: 'In Progress Session' },
   { key: 'completed', label: 'Completed Session' },
@@ -45,7 +46,6 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
         <div>
           <h3 className="text-xl font-black text-green-900">Round {round.roundNumber}</h3>
         </div>
-        {round.isConfirmed && <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-bold">Confirmed</span>}
       </div>
 
       {round.matches.map((match, i) => {
@@ -54,9 +54,13 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
           <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-6 py-4 bg-green-900">
               <span className="text-xs font-black text-white uppercase tracking-widest">{match.court}</span>
-              {roundStartLabel && (
+              {roundStartLabel ? (
                 <span className="text-xs font-black tracking-wide text-white">
                   Starts {roundStartLabel}
+                </span>
+              ) : (
+                <span className="text-xs font-black tracking-wide text-white">
+                  Start time unavailable
                 </span>
               )}
             </div>
@@ -80,6 +84,7 @@ export default function BroadcastPage() {
   const { state, toggleBroadcast, setBroadcastRound, getPlayerById } = useSession()
   const [showRatings, setShowRatings] = useState(true)
   const [selectedRoundNumber, setSelectedRoundNumber] = useState(null)
+  const [selectedSessionState, setSelectedSessionState] = useState('all')
   const broadcastUrl = window.location.origin + '/broadcast'
 
   useEffect(() => {
@@ -88,20 +93,43 @@ export default function BroadcastPage() {
       return
     }
 
-    const hasSelectedRound = state.rounds.some(round => round.roundNumber === selectedRoundNumber)
-    if (hasSelectedRound) return
+    if (selectedRoundNumber == null) {
+      const preferredRoundNumber = state.selectedBroadcastRoundNumber ?? state.rounds[0].roundNumber
+      setSelectedRoundNumber(preferredRoundNumber)
+      return
+    }
 
-    const preferredRoundNumber = state.selectedBroadcastRoundNumber ?? state.rounds[state.rounds.length - 1].roundNumber
-    setSelectedRoundNumber(preferredRoundNumber)
+    const hasSelectedRound = state.rounds.some(round => round.roundNumber === selectedRoundNumber)
+    if (!hasSelectedRound) {
+      const fallbackRoundNumber = state.selectedBroadcastRoundNumber ?? state.rounds[0].roundNumber
+      setSelectedRoundNumber(fallbackRoundNumber)
+    }
   }, [state.rounds, state.selectedBroadcastRoundNumber, selectedRoundNumber])
 
-  const broadcastRound = state.rounds.find(round => round.roundNumber === selectedRoundNumber)
-    ?? state.rounds[state.rounds.length - 1]
-  const currentSessionState = getRoundSessionState(state.session, broadcastRound)
+  const roundsWithState = state.rounds.map(round => ({
+    ...round,
+    sessionState: getRoundSessionState(state.session, round),
+  }))
+
+  const visibleRounds = selectedSessionState === 'all'
+    ? roundsWithState
+    : roundsWithState.filter(round => round.sessionState === selectedSessionState)
+
+  useEffect(() => {
+    if (visibleRounds.length === 0) return
+    if (visibleRounds.some(round => round.roundNumber === selectedRoundNumber)) return
+    setSelectedRoundNumber(visibleRounds[0].roundNumber)
+  }, [visibleRounds, selectedRoundNumber])
+
+  const broadcastRound = visibleRounds.find(round => round.roundNumber === selectedRoundNumber) ?? null
 
   function handleSelectRound(roundNumber) {
     setSelectedRoundNumber(roundNumber)
     setBroadcastRound(roundNumber)
+  }
+
+  function handleSelectSessionState(sessionState) {
+    setSelectedSessionState(sessionState)
   }
 
   if (!state.isBroadcasting) {
@@ -122,7 +150,7 @@ export default function BroadcastPage() {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-8 animate-fade-in">
-      <div className="flex items-center justify-between animate-slide-up">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-slide-up">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 bg-coral-500 rounded-full animate-pulse" />
           <div>
@@ -165,8 +193,8 @@ export default function BroadcastPage() {
         <div className="flex flex-col gap-8">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-400">Rounds</span>
-            {state.rounds.map(round => {
-              const isSelected = round.roundNumber === broadcastRound?.roundNumber
+            {visibleRounds.map(round => {
+              const isSelected = round.roundNumber === selectedRoundNumber
               return (
                 <button
                   key={round.roundNumber}
@@ -186,21 +214,29 @@ export default function BroadcastPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {SESSION_STATES.map(sessionState => {
-              const isActive = sessionState.key === currentSessionState
+              const isActive = sessionState.key === selectedSessionState
               return (
-                <span
+                <button
                   key={sessionState.key}
+                  type="button"
+                  onClick={() => handleSelectSessionState(sessionState.key)}
                   className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-black uppercase tracking-wide transition-all ${
                     isActive
                       ? 'bg-coral-500 text-white shadow-sm'
-                      : 'border border-gray-200 bg-white text-gray-400'
+                      : 'border border-gray-200 bg-white text-gray-500 hover:border-coral-300 hover:text-coral-600'
                   }`}
                 >
                   {sessionState.label}
-                </span>
+                </button>
               )
             })}
           </div>
+
+          {!broadcastRound && (
+            <p className="text-center text-sm text-gray-400 py-8">
+              No rounds match this session state.
+            </p>
+          )}
 
           {broadcastRound && (
             <BroadcastRound round={broadcastRound} session={state.session} getPlayerById={getPlayerById} showRatings={showRatings} />
