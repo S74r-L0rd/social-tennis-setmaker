@@ -15,7 +15,7 @@ export function getRoundStartDate(sessionConfig, roundNumber) {
 
 export function formatRoundStartLabel(sessionConfig, roundNumber) {
   const roundStartDate = getRoundStartDate(sessionConfig, roundNumber)
-  if (!roundStartDate) return 'Start time unavailable'
+  if (!roundStartDate) return null
 
   return roundStartDate.toLocaleString('en-AU', {
     weekday: 'short',

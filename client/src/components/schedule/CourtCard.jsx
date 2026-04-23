@@ -23,6 +23,11 @@ export default function CourtCard({ match, isEditable, roundStartLabel = null, s
               Starts {roundStartLabel}
             </span>
           )}
+          {showRoundStart && !roundStartLabel && (
+            <span className="text-xs font-black tracking-wide text-white">
+              Start time unavailable
+            </span>
+          )}
           {imbalanced ? (
             <span className="text-xs text-amber-400 font-semibold flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">

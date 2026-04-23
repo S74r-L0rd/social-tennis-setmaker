@@ -87,12 +87,12 @@ export default function SchedulePage() {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6 animate-fade-in">
-      <div className="flex items-center justify-between animate-slide-up">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between animate-slide-up">
         <div>
           <h1 className="text-3xl font-black text-green-900">Schedule</h1>
           <p className="text-base text-gray-400 mt-0.5">{state.session?.name} · {state.rounds.length} round{state.rounds.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <button
             type="button"
             onClick={handleReshuffleCurrentRound}
