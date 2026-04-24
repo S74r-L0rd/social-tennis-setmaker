@@ -128,6 +128,13 @@ function createFormStateFromSession(sessionConfig) {
   }
 }
 
+function isValidDateTimeValue(value) {
+  if (typeof value !== 'string' || !value.trim()) return false
+
+  const date = new Date(value)
+  return !Number.isNaN(date.getTime())
+}
+
 export default function SetupPage() {
   const { state, setSession, selectSession, updateSessionConfig, deleteSession } = useSession()
   const navigate = useNavigate()
@@ -142,7 +149,23 @@ export default function SetupPage() {
 
   function validate() {
     const e = {}
+    if (!form.sessionDate) e.sessionDate = 'Session date is required'
+    if (!SESSION_PERIODS.some(period => period.value === form.sessionPeriod)) {
+      e.sessionPeriod = 'Session period is required'
+    }
+    if (!isValidDateTimeValue(form.startDateTime)) {
+      e.startDateTime = 'Match start time is required'
+    }
+    if (!MATCH_DURATION_OPTIONS.some(option => Number(option.value) === Number(form.matchDurationMinutes))) {
+      e.matchDurationMinutes = 'Match duration is required'
+    }
+    if (!BREAK_INTERVAL_OPTIONS.some(option => Number(option.value) === Number(form.breakIntervalMinutes))) {
+      e.breakIntervalMinutes = 'Break interval is required'
+    }
     if (form.selectedCourts.length === 0) e.selectedCourts = 'Select at least one court'
+    if (!GAME_MODES.some(mode => mode.value === form.gameMode)) {
+      e.gameMode = 'Format is required'
+    }
     return e
   }
 
@@ -340,13 +363,16 @@ export default function SetupPage() {
                     {isSessionPickerOpen && (
                       <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
                         <div className="grid grid-cols-[minmax(0,1fr)_140px] gap-4 items-start">
-                          <input
-                            type="date"
-                            lang="en-AU"
-                            value={form.sessionDate}
-                            onChange={e => set('sessionDate', e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
-                          />
+                          <div className="flex flex-col gap-2">
+                            <input
+                              type="date"
+                              lang="en-AU"
+                              value={form.sessionDate}
+                              onChange={e => set('sessionDate', e.target.value)}
+                              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
+                            />
+                            {errors.sessionDate && <p className="text-xs text-red-500">{errors.sessionDate}</p>}
+                          </div>
                           <div className="flex flex-col gap-2">
                             {SESSION_PERIODS.map(period => (
                               <button
@@ -362,6 +388,7 @@ export default function SetupPage() {
                                 {period.label}
                               </button>
                             ))}
+                            {errors.sessionPeriod && <p className="text-xs text-red-500">{errors.sessionPeriod}</p>}
                           </div>
                         </div>
                       </div>
@@ -456,6 +483,7 @@ export default function SetupPage() {
                       </svg>
                     </button>
                   </div>
+                  {errors.startDateTime && <p className="text-xs text-red-500">{errors.startDateTime}</p>}
                 </div>
 
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
@@ -482,6 +510,7 @@ export default function SetupPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
                     </svg>
                   </div>
+                  {errors.matchDurationMinutes && <p className="text-xs text-red-500">{errors.matchDurationMinutes}</p>}
                 </div>
               </div>
 
@@ -510,6 +539,7 @@ export default function SetupPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
                     </svg>
                   </div>
+                  {errors.breakIntervalMinutes && <p className="text-xs text-red-500">{errors.breakIntervalMinutes}</p>}
                 </div>
 
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
@@ -536,6 +566,7 @@ export default function SetupPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
                     </svg>
                   </div>
+                  {errors.gameMode && <p className="text-xs text-red-500">{errors.gameMode}</p>}
                 </div>
               </div>
 

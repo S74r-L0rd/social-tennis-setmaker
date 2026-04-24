@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
+import { getSessionScheduleIssue } from '../utils/roundSchedule'
 import PlayerForm from '../components/players/PlayerForm'
 import PlayerTable from '../components/players/PlayerTable'
 
@@ -22,8 +23,9 @@ export default function PlayersPage() {
   }, [showAddedNotice])
 
   const activePlayers = state.players.filter(p => p.status === 'active')
+  const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const recentPlayers = [...state.players].sort((a, b) => b.id - a.id).slice(0, 5)
-  const canGenerate = activePlayers.length >= 4
+  const canGenerate = activePlayers.length >= 4 && !sessionScheduleIssue
   const editingPlayer = state.players.find(player => player.id === editingPlayerId) ?? null
   const selectedCourtCount = Array.isArray(state.session?.courts)
     ? state.session.courts.length
@@ -129,6 +131,18 @@ export default function PlayersPage() {
         <div className="flex flex-col gap-4">
           <div className="animate-slide-up" style={{ animationDelay: '0.03s' }}>
             <div className="flex flex-col items-start gap-2">
+              {sessionScheduleIssue && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {sessionScheduleIssue}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/setup')}
+                    className="ml-2 font-black text-coral-600 hover:text-coral-700"
+                  >
+                    Go to Setup
+                  </button>
+                </div>
+              )}
               {selectedCourtCount > 0 && (
                 <p className="text-xs text-gray-400">
                   {selectedCourtCount} court{selectedCourtCount !== 1 ? 's' : ''} selected · up to {maxPlayersThisRound} player{maxPlayersThisRound !== 1 ? 's' : ''} this round

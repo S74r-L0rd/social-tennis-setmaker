@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { generateSchedule } from '../services/schedulerService'
+import { getSessionScheduleIssue } from '../utils/roundSchedule'
 
 const SessionContext = createContext(null)
 
@@ -309,11 +310,13 @@ function buildPlayerDatabase(sessions, playerLibrary) {
 }
 
 function normalizeSessionRecord(session, fallbackId) {
+  const normalizedSessionConfig = normalizeSessionConfig(session?.session ?? session)
+
   if (session?.session) {
     return {
       ...session,
       id: session.id ?? fallbackId,
-      session: { ...session.session },
+      session: normalizedSessionConfig,
       players: session.players ?? [],
       rounds: session.rounds ?? [],
       selectedBroadcastRoundNumber: session.selectedBroadcastRoundNumber ?? null,
@@ -325,23 +328,44 @@ function normalizeSessionRecord(session, fallbackId) {
 
   return {
     id: session.id ?? fallbackId,
-    session: {
-      name: session.name ?? 'Untitled Session',
-      sessionDate: session.sessionDate,
-      sessionPeriod: session.sessionPeriod,
-      courtCount: session.courtCount,
-      courts: session.courts,
-      startDateTime: session.startDateTime,
-      matchDurationMinutes: session.matchDurationMinutes,
-      breakIntervalMinutes: session.breakIntervalMinutes,
-      gameMode: session.gameMode,
-    },
+    session: normalizedSessionConfig,
     createdAt: session.createdAt ?? new Date().toISOString(),
     players: session.players ?? [],
     rounds: session.rounds ?? [],
     selectedBroadcastRoundNumber: session.selectedBroadcastRoundNumber ?? null,
     history: session.history ?? { partner: {}, opponent: {} },
     isBroadcasting: session.isBroadcasting ?? false,
+  }
+}
+
+function inferStartDateTime(sessionConfig = {}) {
+  if (typeof sessionConfig.startDateTime === 'string' && sessionConfig.startDateTime.trim()) {
+    return sessionConfig.startDateTime
+  }
+
+  if (!sessionConfig.sessionDate) return null
+
+  const fallbackTimeByPeriod = {
+    morning: '09:00',
+    afternoon: '13:00',
+    evening: '18:00',
+  }
+
+  const fallbackTime = fallbackTimeByPeriod[sessionConfig.sessionPeriod] ?? '09:00'
+  return `${sessionConfig.sessionDate}T${fallbackTime}`
+}
+
+function normalizeSessionConfig(sessionConfig = {}) {
+  return {
+    name: sessionConfig.name ?? 'Untitled Session',
+    sessionDate: sessionConfig.sessionDate,
+    sessionPeriod: sessionConfig.sessionPeriod,
+    courtCount: sessionConfig.courtCount,
+    courts: sessionConfig.courts,
+    startDateTime: inferStartDateTime(sessionConfig),
+    matchDurationMinutes: sessionConfig.matchDurationMinutes,
+    breakIntervalMinutes: sessionConfig.breakIntervalMinutes,
+    gameMode: sessionConfig.gameMode,
   }
 }
 
@@ -661,6 +685,9 @@ function reducer(state, action) {
 const STORAGE_KEY = 'social-tennis-session'
 
 async function generateRoundForSession(sessionRecord, historyOverride = null) {
+  const sessionIssue = getSessionScheduleIssue(sessionRecord?.session)
+  if (sessionIssue) throw new Error(sessionIssue)
+
   const eligible = getEligiblePlayers(sessionRecord.players)
   const courts = getSessionCourts(sessionRecord.session)
   const history = historyOverride ?? sessionRecord.history
