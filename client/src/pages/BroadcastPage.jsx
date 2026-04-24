@@ -29,8 +29,8 @@ function getRoundSessionState(sessionConfig, round) {
 function PlayerChip({ player, showRatings }) {
   if (!player) return null
   return (
-    <span className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white border border-gray-100 shadow-sm text-base font-bold text-gray-800">
-      {player.name}
+    <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm text-sm font-bold text-gray-800 sm:px-4 sm:py-2.5 sm:text-base">
+      <span className="break-words">{player.name}</span>
       <GenderBadge gender={player.gender} />
       {showRatings && <RatingBadge rating={player.rating} />}
     </span>
@@ -52,24 +52,26 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
         const [team1, team2] = match.teams
         return (
           <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-6 py-4 bg-green-900">
+            <div className="flex flex-col items-start gap-2 px-4 py-4 bg-green-900 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6">
               <span className="text-xs font-black text-white uppercase tracking-widest">{match.court}</span>
               {roundStartLabel ? (
-                <span className="text-xs font-black tracking-wide text-white">
+                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
                   Starts {roundStartLabel}
                 </span>
               ) : (
-                <span className="text-xs font-black tracking-wide text-white">
+                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
                   Start time unavailable
                 </span>
               )}
             </div>
-            <div className="p-5 flex items-start gap-4">
-              <div className="flex flex-col gap-2.5 flex-1">
+            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5">
+              <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                 {team1.map(p => <PlayerChip key={p.id} player={getPlayerById(p.id)} showRatings={showRatings} />)}
               </div>
-              <div className="text-sm font-black text-gray-200 pt-2 flex-shrink-0">VS</div>
-              <div className="flex flex-col gap-2.5 flex-1">
+              <div className="flex items-center justify-center text-xs font-black uppercase tracking-[0.2em] text-gray-300 sm:pt-2 sm:text-sm sm:tracking-normal">
+                VS
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-2.5">
                 {team2.map(p => <PlayerChip key={p.id} player={getPlayerById(p.id)} showRatings={showRatings} />)}
               </div>
             </div>
@@ -149,13 +151,13 @@ export default function BroadcastPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-8 animate-fade-in">
+    <div className="max-w-5xl mx-auto flex flex-col gap-6 sm:gap-8 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between animate-slide-up">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="w-3 h-3 bg-coral-500 rounded-full animate-pulse" />
-          <div>
-            <h1 className="text-3xl font-black text-green-900 tracking-tight">Live</h1>
-            <p className="text-base text-gray-400">{state.session?.name}</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black text-green-900 tracking-tight sm:text-3xl">Live</h1>
+            <p className="text-sm text-gray-400 break-words sm:text-base">{state.session?.name}</p>
           </div>
         </div>
         <button onClick={toggleBroadcast}
@@ -164,11 +166,11 @@ export default function BroadcastPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col sm:flex-row items-center gap-6 animate-slide-up" style={{ animationDelay: '0.05s' }}>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 animate-slide-up" style={{ animationDelay: '0.05s' }}>
         <div className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm flex-shrink-0">
-          <QRCodeSVG value={broadcastUrl} size={130} />
+          <QRCodeSVG value={broadcastUrl} size={112} className="sm:w-[130px] sm:h-[130px]" />
         </div>
-        <div className="text-center sm:text-left">
+        <div className="min-w-0 text-center sm:text-left">
           <p className="text-sm font-black text-gray-800 mb-1.5">Scan to view schedule</p>
           <p className="text-xs text-gray-400 break-all font-mono">{broadcastUrl}</p>
           <p className="text-xs text-amber-700 mt-3 bg-amber-50 rounded-xl px-4 py-2.5 leading-relaxed border border-amber-100">
@@ -190,9 +192,9 @@ export default function BroadcastPage() {
       {state.rounds.length === 0 ? (
         <p className="text-center text-sm text-gray-400 py-8">No schedule yet</p>
       ) : (
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-6 sm:gap-8">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-xs font-black uppercase tracking-wide text-gray-400">Rounds</span>
+            <span className="mr-1 w-full text-xs font-black uppercase tracking-wide text-gray-400 sm:w-auto">Rounds</span>
             {visibleRounds.map(round => {
               const isSelected = round.roundNumber === selectedRoundNumber
               return (

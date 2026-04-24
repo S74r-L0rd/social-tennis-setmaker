@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { useSession } from '../context/SessionContext'
 import RoundPanel from '../components/schedule/RoundPanel'
-import { formatRoundStartLabel } from '../utils/roundSchedule'
+import { formatRoundStartLabel, getSessionScheduleIssue } from '../utils/roundSchedule'
 
 function formatGeneratedAt(value) {
   if (!value) return null
@@ -34,6 +34,7 @@ export default function SchedulePage() {
   const currentRoundIdx = state.rounds.length - 1
   const isCurrentTab = activeTab === currentRoundIdx
   const currentRound = state.rounds[activeTab]
+  const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)
   const roundStartLabel = currentRound ? formatRoundStartLabel(state.session, currentRound.roundNumber) : null
 
@@ -43,6 +44,7 @@ export default function SchedulePage() {
   }
 
   function handleGenerateNext() {
+    if (sessionScheduleIssue) return
     clearError()
     confirmAndGenerateNext()
     setActiveTab(state.rounds.length)
@@ -63,7 +65,7 @@ export default function SchedulePage() {
   }
 
   function handleReshuffleCurrentRound() {
-    if (!currentRound) return
+    if (!currentRound || sessionScheduleIssue) return
     reshuffleRound(activeTab)
   }
 
@@ -81,6 +83,25 @@ export default function SchedulePage() {
           className="text-sm text-coral-500 hover:text-coral-600 font-bold transition-colors">
           ← Back to Players
         </button>
+      </div>
+    )
+  }
+
+  if (sessionScheduleIssue) {
+    return (
+      <div className="max-w-5xl mx-auto flex flex-col gap-6 animate-fade-in">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-amber-900">
+          <h1 className="text-2xl font-black">Session configuration required</h1>
+          <p className="mt-2 text-sm">{sessionScheduleIssue}</p>
+          <p className="mt-1 text-sm">Scheduling is blocked until the session is corrected in Setup.</p>
+          <button
+            type="button"
+            onClick={() => navigate('/setup')}
+            className="mt-4 inline-flex rounded-xl bg-coral-500 px-4 py-2.5 text-sm font-black text-white transition-all hover:bg-coral-600"
+          >
+            Go to Setup
+          </button>
+        </div>
       </div>
     )
   }
