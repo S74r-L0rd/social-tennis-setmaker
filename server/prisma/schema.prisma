@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PlayerStatus {
+  ACTIVE
+  RESTING
+  INACTIVE
+}
+
+model Session {
+  id                       Int             @id @default(autoincrement())
+  name                     String
+  sessionDate              DateTime?
+  sessionPeriod            String?
+  startDateTime            DateTime?
+  matchDurationMinutes     Int?
+  breakIntervalMinutes     Int?
+  courtCount               Int?
+  gameMode                 String?
+  ratingMode               String?
+  status                   SessionStatus   @default(DRAFT)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  courts                   SessionCourt[]
+  sessionPlayers           SessionPlayer[]
+  rounds                   Round[]
+}
+
+model Player {
+  id                       Int             @id @default(autoincrement())
+  name                     String
+  gender                   String?
+  rating                   Int             @default(0)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  sessionPlayers           SessionPlayer[]
+  matchAssignments         MatchAssignment[]
+}
+
+model SessionPlayer {
+  id                       Int             @id @default(autoincrement())
+  sessionId                Int
+  playerId                 Int
+  plannedRounds            Int             @default(0)
+  roundsPlayed             Int             @default(0)
+  sitOutCount              Int             @default(0)
+  status                   PlayerStatus    @default(ACTIVE)
+  joinedAt                 DateTime        @default(now())
+  leftAt                   DateTime?
+
+  session                  Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  player                   Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  sitOuts                  RoundSitOut[]
+
+  @@unique([sessionId, playerId])
+}
+
+model SessionCourt {
+  id                       Int             @id @default(autoincrement())
+  sessionId                Int
+  courtNumber              Int
+  courtName                String?
+  isAvailable              Boolean         @default(true)
+  priorityOrder            Int?
+
+  session                  Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, courtNumber])
+}
+
+model Round {
+  id                       Int             @id @default(autoincrement())
+  sessionId                Int
+  roundNumber              Int
+  isConfirmed              Boolean         @default(false)
+  generatedAt              DateTime        @default(now())
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  session                  Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  matches                  Match[]
+  sitOuts                  RoundSitOut[]
+
+  @@unique([sessionId, roundNumber])
+}
+
+model Match {
+  id                       Int               @id @default(autoincrement())
+  roundId                  Int
+  courtNumber              Int?
+  courtName                String?
+  matchOrder               Int?
+  createdAt                DateTime          @default(now())
+
+  round                    Round             @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  assignments              MatchAssignment[]
+}
+
+model MatchAssignment {
+  id                       Int               @id @default(autoincrement())
+  matchId                  Int
+  playerId                 Int
+  teamNumber               Int
+  positionInTeam           Int
+
+  match                    Match             @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player                   Player            @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId])
+  @@unique([matchId, teamNumber, positionInTeam])
+}
+
+model RoundSitOut {
+  id                       Int               @id @default(autoincrement())
+  roundId                  Int
+  sessionPlayerId          Int
+
+  round                    Round             @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  sessionPlayer            SessionPlayer     @relation(fields: [sessionPlayerId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, sessionPlayerId])
+}
