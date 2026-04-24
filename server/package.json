@@ -1,0 +1,17 @@
+{
+  "name": "social-tennis-setmaker-server",
+  "version": "1.0.0",
+  "description": "Social Tennis Setmaker scheduling engine",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "node src/app.js",
+    "test": "node tests/scheduler.test.js",
+    "run-example": "node src/scripts/example-run.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
