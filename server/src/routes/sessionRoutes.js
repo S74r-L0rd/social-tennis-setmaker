@@ -14,9 +14,19 @@ function isValidId(value) {
   return Number.isInteger(value) && value > 0;
 }
 
+function toDateOrNull(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date;
+}
+
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { name } = req.body;
+    const {
+      name, sessionDate, sessionPeriod, startDateTime,
+      matchDurationMinutes, breakIntervalMinutes, courtCount,
+      gameMode, ratingMode,
+    } = req.body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
@@ -25,13 +35,26 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    const session = await createSession(req.body);
+    const data = {
+      name: name.trim(),
+      sessionDate:           toDateOrNull(sessionDate),
+      sessionPeriod:         sessionPeriod  || null,
+      startDateTime:         toDateOrNull(startDateTime),
+      matchDurationMinutes:  matchDurationMinutes  != null ? Number(matchDurationMinutes)  : null,
+      breakIntervalMinutes:  breakIntervalMinutes  != null ? Number(breakIntervalMinutes)  : null,
+      courtCount:            courtCount            != null ? Number(courtCount)            : null,
+      gameMode:              gameMode    || null,
+      ratingMode:            ratingMode  || null,
+    };
+
+    const session = await createSession(data);
 
     res.status(201).json({
       success: true,
       data: session,
     });
   } catch (error) {
+    console.error("Create session error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to create session.",
