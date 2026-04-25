@@ -937,7 +937,24 @@ export function SessionProvider({ children }) {
       }
 
       await api.activateSession(created.id, token)
-      await loadAll()
+
+      // Reload sessions in background — non-fatal if it fails
+      try {
+        await loadAll()
+      } catch {
+        // Minimal local state so the UI doesn't break before next reload
+        dispatch({
+          type: 'SET_SESSION',
+          payload: {
+            name: config.name, sessionDate: config.sessionDate,
+            sessionPeriod: config.sessionPeriod, startDateTime: config.startDateTime,
+            matchDurationMinutes: config.matchDurationMinutes,
+            breakIntervalMinutes: config.breakIntervalMinutes,
+            courtCount: config.courtCount, courts: config.courts, gameMode: config.gameMode,
+          },
+        })
+      }
+
       dispatch({ type: 'SELECT_SESSION', payload: created.id })
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message })
