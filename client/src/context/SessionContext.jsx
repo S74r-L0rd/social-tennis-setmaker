@@ -845,9 +845,18 @@ export function SessionProvider({ children }) {
         dispatch({ type: 'SET_ERROR', payload: sessionIssue })
         return false
       }
-      await api.generateRound(state.currentSessionId, token)
-      const sessions = await api.getSessions(token)
-      dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) })
+      // Save to DB and get the round data back
+      const roundData = await api.generateRound(state.currentSessionId, token)
+      const adaptedRound = adaptBackendRound(roundData)
+
+      // Update state immediately so SchedulePage renders with the round
+      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+
+      // Reload in background to sync player stats (roundsPlayed, sitOutCount)
+      api.getSessions(token)
+        .then(sessions => dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) }))
+        .catch(() => {})
+
       return true
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
@@ -867,10 +876,18 @@ export function SessionProvider({ children }) {
       }
       const eligible = getEligiblePlayers(currentSession.players)
       if (eligible.length >= 4) {
-        await api.generateRound(state.currentSessionId, token)
+        const roundData = await api.generateRound(state.currentSessionId, token)
+        const adaptedRound = adaptBackendRound(roundData)
+        dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+      } else {
+        // No more rounds possible — just mark last round confirmed locally
+        dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
       }
-      const sessions = await api.getSessions(token)
-      dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) })
+
+      // Background reload for player stats
+      api.getSessions(token)
+        .then(sessions => dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) }))
+        .catch(() => {})
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
     }
