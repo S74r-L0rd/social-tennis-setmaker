@@ -49,18 +49,18 @@ export default function PlayersPage() {
     { id: 'all', label: 'All', count: state.players.length },
   ]
 
-  function handleAddPlayer(data) {
-    addPlayer(data)
+  async function handleAddPlayer(data) {
+    await addPlayer(data)
     setShowAddedNotice(true)
   }
 
-  function handleSubmitPlayer(data) {
+  async function handleSubmitPlayer(data) {
     if (editingPlayer) {
-      updatePlayer(editingPlayer.id, data)
+      await updatePlayer(editingPlayer.id, data)
       setEditingPlayerId(null)
       return
     }
-    handleAddPlayer(data)
+    await handleAddPlayer(data)
   }
 
   async function handleGenerate() {

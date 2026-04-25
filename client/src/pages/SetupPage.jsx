@@ -169,7 +169,7 @@ export default function SetupPage() {
     return e
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length) {
@@ -189,15 +189,18 @@ export default function SetupPage() {
       gameMode: form.gameMode,
     }
 
-    if (editingSessionId != null) {
-      updateSessionConfig(editingSessionId, sessionConfig)
-      selectSession(editingSessionId)
-      setEditingSessionId(null)
-    } else {
-      setSession(sessionConfig)
+    try {
+      if (editingSessionId != null) {
+        await updateSessionConfig(editingSessionId, sessionConfig)
+        selectSession(editingSessionId)
+        setEditingSessionId(null)
+      } else {
+        await setSession(sessionConfig)
+      }
+      navigate('/players')
+    } catch {
+      // error already set in context
     }
-
-    navigate('/players')
   }
 
   const sessions = [...state.sessions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
