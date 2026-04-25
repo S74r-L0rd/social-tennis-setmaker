@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node src/app.js",
     "test": "node tests/scheduler.test.js",
+    "test:api": "node tests/api.test.js",
     "run-example": "node src/scripts/example-run.js"
   },
   "author": "",
