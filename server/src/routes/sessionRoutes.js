@@ -6,6 +6,7 @@ const {
   updateSession,
   deleteSession,
 } = require("../repositories/sessionRepository");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ function isValidId(value) {
   return Number.isInteger(value) && value > 0;
 }
 
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
     const { name } = req.body;
 
@@ -86,7 +87,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
 
@@ -120,7 +121,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
 
@@ -151,6 +152,97 @@ router.delete("/:id", async (req, res) => {
       success: false,
       error: "Failed to delete session.",
     });
+  }
+});
+
+// POST /api/sessions/:id/activate
+// Moves a session from DRAFT → ACTIVE
+router.post("/:id/activate", requireAuth, async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id);
+
+    if (!isValidId(sessionId)) {
+      return res.status(400).json({ success: false, error: "Invalid session id." });
+    }
+
+    const existing = await getSessionById(sessionId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Session not found." });
+    }
+
+    if (existing.status !== "DRAFT") {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot activate a session with status '${existing.status}'. Only DRAFT sessions can be activated.`,
+      });
+    }
+
+    const session = await updateSession(sessionId, {
+      status: "ACTIVE",
+      startDateTime: existing.startDateTime ?? new Date(),
+    });
+
+    res.status(200).json({ success: true, data: session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to activate session." });
+  }
+});
+
+// POST /api/sessions/:id/complete
+// Moves a session from ACTIVE → COMPLETED
+router.post("/:id/complete", requireAuth, async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id);
+
+    if (!isValidId(sessionId)) {
+      return res.status(400).json({ success: false, error: "Invalid session id." });
+    }
+
+    const existing = await getSessionById(sessionId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Session not found." });
+    }
+
+    if (existing.status !== "ACTIVE") {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot complete a session with status '${existing.status}'. Only ACTIVE sessions can be completed.`,
+      });
+    }
+
+    const session = await updateSession(sessionId, { status: "COMPLETED" });
+    res.status(200).json({ success: true, data: session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to complete session." });
+  }
+});
+
+// POST /api/sessions/:id/cancel
+// Moves a session from DRAFT or ACTIVE → CANCELLED
+router.post("/:id/cancel", requireAuth, async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id);
+
+    if (!isValidId(sessionId)) {
+      return res.status(400).json({ success: false, error: "Invalid session id." });
+    }
+
+    const existing = await getSessionById(sessionId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Session not found." });
+    }
+
+    if (existing.status === "COMPLETED" || existing.status === "CANCELLED") {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot cancel a session with status '${existing.status}'.`,
+      });
+    }
+
+    const session = await updateSession(sessionId, { status: "CANCELLED" });
+    res.status(200).json({ success: true, data: session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to cancel session." });
   }
 });
 

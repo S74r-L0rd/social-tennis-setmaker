@@ -6,6 +6,7 @@ const {
   updatePlayer,
   deletePlayer,
 } = require("../repositories/playerRepository");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ function isValidId(value) {
   return Number.isInteger(value) && value > 0;
 }
 
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
     const { name, rating } = req.body;
 
@@ -93,7 +94,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, async (req, res) => {
   try {
     const playerId = Number(req.params.id);
 
@@ -137,7 +138,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const playerId = Number(req.params.id);
 

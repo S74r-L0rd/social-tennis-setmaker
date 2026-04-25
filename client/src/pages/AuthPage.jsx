@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const LOGIN_EMPTY = { email: '', password: '' }
 const SIGNUP_EMPTY = {
@@ -21,6 +22,7 @@ function passwordChecks(password) {
 
 export default function AuthPage() {
   const navigate = useNavigate()
+  const { login, register } = useAuth()
   const [mode, setMode] = useState('login')
   const [loginForm, setLoginForm] = useState(LOGIN_EMPTY)
   const [signupForm, setSignupForm] = useState(SIGNUP_EMPTY)
@@ -64,12 +66,17 @@ export default function AuthPage() {
     return next
   }
 
-  function handleLoginSubmit(e) {
+  async function handleLoginSubmit(e) {
     e.preventDefault()
     const next = validateLogin()
     setLoginErrors(next)
     if (Object.keys(next).length > 0) return
-    navigate('/setup')
+    try {
+      await login(loginForm.email, loginForm.password)
+      navigate('/setup')
+    } catch (error) {
+      setLoginErrors({ api: error.message })
+    }
   }
 
   function handleForgotPasswordSubmit(e) {
@@ -81,14 +88,17 @@ export default function AuthPage() {
     setForgotPasswordSent(true)
   }
 
-  function handleSignupSubmit(e) {
+  async function handleSignupSubmit(e) {
     e.preventDefault()
     const next = validateSignup()
     setSignupErrors(next)
     if (Object.keys(next).length > 0) return
-    setMode('login')
-    setSignupForm(SIGNUP_EMPTY)
-    setSignupErrors({})
+    try {
+      await register(signupForm.name, signupForm.email, signupForm.password)
+      navigate('/setup')
+    } catch (error) {
+      setSignupErrors({ api: error.message })
+    }
   }
 
   return (
@@ -209,6 +219,10 @@ export default function AuthPage() {
                   </div>
                 </div>
 
+                {loginErrors.api && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{loginErrors.api}</p>
+                )}
+
                 <button
                   type="submit"
                   className="mt-2 py-3.5 rounded-xl bg-coral-500 hover:bg-coral-600 text-white text-sm font-black transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]"
@@ -314,6 +328,10 @@ export default function AuthPage() {
                 </span>
               </label>
               {signupErrors.agreed && <p className="text-xs text-red-500 -mt-2">{signupErrors.agreed}</p>}
+
+              {signupErrors.api && (
+                <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-4 py-3">{signupErrors.api}</p>
+              )}
 
               <button
                 type="submit"
