@@ -107,7 +107,24 @@ router.put("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const session = await updateSession(sessionId, req.body);
+    const {
+      name, sessionDate, sessionPeriod, startDateTime,
+      matchDurationMinutes, breakIntervalMinutes, courtCount,
+      gameMode, ratingMode, status,
+    } = req.body;
+    const updates = {};
+    if (name !== undefined)                 updates.name = name;
+    if (sessionDate !== undefined)          updates.sessionDate = sessionDate;
+    if (sessionPeriod !== undefined)        updates.sessionPeriod = sessionPeriod;
+    if (startDateTime !== undefined)        updates.startDateTime = startDateTime;
+    if (matchDurationMinutes !== undefined) updates.matchDurationMinutes = matchDurationMinutes;
+    if (breakIntervalMinutes !== undefined) updates.breakIntervalMinutes = breakIntervalMinutes;
+    if (courtCount !== undefined)           updates.courtCount = courtCount;
+    if (gameMode !== undefined)             updates.gameMode = gameMode;
+    if (ratingMode !== undefined)           updates.ratingMode = ratingMode;
+    if (status !== undefined)               updates.status = status;
+
+    const session = await updateSession(sessionId, updates);
 
     res.status(200).json({
       success: true,

@@ -124,7 +124,13 @@ router.put("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const player = await updatePlayer(playerId, req.body);
+    const { name, gender, rating } = req.body;
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (gender !== undefined) updates.gender = gender;
+    if (rating !== undefined) updates.rating = rating;
+
+    const player = await updatePlayer(playerId, updates);
 
     res.status(200).json({
       success: true,
