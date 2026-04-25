@@ -761,6 +761,19 @@ function reducer(state, action) {
     case 'UPDATE_SESSIONS':
       return { ...state, sessions: action.payload }
 
+    // Update roundsPlayed / sitOutCount on current session players from a just-generated round
+    case 'UPDATE_PLAYER_STATS_FROM_ROUND': {
+      const { playedIds, sitOutIds } = action.payload
+      return updateCurrentSession(state, session => ({
+        ...session,
+        players: session.players.map(p => ({
+          ...p,
+          roundsPlayed: playedIds.has(p.id) ? p.roundsPlayed + 1 : p.roundsPlayed,
+          sitOutCount: sitOutIds.has(p.id) ? p.sitOutCount + 1 : p.sitOutCount,
+        })),
+      }))
+    }
+
     case 'ADD_PLAYER_DIRECT': {
       const player = action.payload
       const inLibrary = state.playerLibrary.some(p => p.id === player.id)
@@ -842,20 +855,22 @@ export function SessionProvider({ children }) {
       }
       const sessionIssue = getSessionScheduleIssue(currentSession?.session)
       if (sessionIssue) {
+        console.warn('[generate] blocked by sessionIssue:', sessionIssue)
         dispatch({ type: 'SET_ERROR', payload: sessionIssue })
         return false
       }
-      // Save to DB and get the round data back
       const roundData = await api.generateRound(state.currentSessionId, token)
       const adaptedRound = adaptBackendRound(roundData)
 
-      // Update state immediately so SchedulePage renders with the round
       dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
 
-      // Reload in background to sync player stats (roundsPlayed, sitOutCount)
-      api.getSessions(token)
-        .then(sessions => dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) }))
-        .catch(() => {})
+      // Update player stats locally from the round result — avoids a full session
+      // reload that can overwrite the correctly adapted round with stale data
+      const playedIds = new Set(
+        adaptedRound.matches.flatMap(m => m.teams.flat().map(p => p.id))
+      )
+      const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
+      dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
 
       return true
     } catch (error) {
@@ -879,15 +894,14 @@ export function SessionProvider({ children }) {
         const roundData = await api.generateRound(state.currentSessionId, token)
         const adaptedRound = adaptBackendRound(roundData)
         dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+        const playedIds = new Set(
+          adaptedRound.matches.flatMap(m => m.teams.flat().map(p => p.id))
+        )
+        const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
+        dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
       } else {
-        // No more rounds possible — just mark last round confirmed locally
         dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
       }
-
-      // Background reload for player stats
-      api.getSessions(token)
-        .then(sessions => dispatch({ type: 'UPDATE_SESSIONS', payload: sessions.map(adaptBackendSession) }))
-        .catch(() => {})
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
     }
