@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 
-const API = 'http://localhost:5001'
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 const STORAGE_KEY = 'stm-auth'
 
 const AuthContext = createContext(null)
