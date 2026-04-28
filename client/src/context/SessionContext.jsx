@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
-import { generateSchedule } from '../services/schedulerService'
 import { getSessionScheduleIssue } from '../utils/roundSchedule'
+import { useAuth } from './AuthContext'
+import { api } from '../services/api'
 
 const SessionContext = createContext(null)
 
@@ -11,6 +12,90 @@ const initialState = {
   nextSessionId: 1,
   nextPlayerId: 1,
   error: null,
+}
+
+// ─── Backend → frontend adapters ─────────────────────────────────────────────
+
+function adaptSessionPlayers(sessionPlayers) {
+  return (sessionPlayers ?? []).map(sp => ({
+    id: sp.playerId,
+    name: sp.player.name,
+    gender: sp.player.gender,
+    rating: Number(sp.player.rating ?? 0),
+    plannedRounds: Number(sp.plannedRounds ?? 0),
+    roundsPlayed: Number(sp.roundsPlayed ?? 0),
+    sitOutCount: Number(sp.sitOutCount ?? 0),
+    status: sp.status === 'ACTIVE' ? 'active' : sp.status === 'RESTING' ? 'resting' : 'inactive',
+    _sessionPlayerId: sp.id,
+  }))
+}
+
+function adaptBackendRound(r) {
+  const matches = (r.matches ?? []).map(match => {
+    const sorted = [...(match.assignments ?? [])].sort((a, b) =>
+      a.teamNumber !== b.teamNumber ? a.teamNumber - b.teamNumber : a.positionInTeam - b.positionInTeam
+    )
+    const team1 = sorted.filter(a => a.teamNumber === 1).map(a => ({
+      id: a.playerId, name: a.player.name, gender: a.player.gender,
+      rating: Number(a.player.rating ?? 0), sitOutCount: 0,
+    }))
+    const team2 = sorted.filter(a => a.teamNumber === 2).map(a => ({
+      id: a.playerId, name: a.player.name, gender: a.player.gender,
+      rating: Number(a.player.rating ?? 0), sitOutCount: 0,
+    }))
+    return { court: match.courtName || `Court ${match.courtNumber}`, teams: [team1, team2] }
+  })
+
+  const sitOuts = (r.sitOuts ?? []).map(so => ({
+    id: so.sessionPlayer?.playerId,
+    name: so.sessionPlayer?.player?.name ?? '',
+    gender: so.sessionPlayer?.player?.gender ?? null,
+    rating: Number(so.sessionPlayer?.player?.rating ?? 0),
+    sitOutCount: Number(so.sessionPlayer?.sitOutCount ?? 0),
+  }))
+
+  return {
+    _dbId: r.id,
+    roundNumber: r.roundNumber,
+    isConfirmed: r.isConfirmed,
+    generatedAt: r.generatedAt ?? r.createdAt,
+    historySnapshot: null,
+    reshuffleUndoSnapshot: null,
+    matches,
+    sitOuts,
+  }
+}
+
+function adaptBackendSession(s) {
+  const courts = (s.courts ?? [])
+    .filter(c => c.isAvailable)
+    .sort((a, b) => (a.priorityOrder ?? 999) - (b.priorityOrder ?? 999) || a.courtNumber - b.courtNumber)
+    .map(c => c.courtName || `Court ${c.courtNumber}`)
+
+  const rounds = (s.rounds ?? []).map(adaptBackendRound)
+
+  return {
+    id: s.id,
+    createdAt: s.createdAt,
+    session: {
+      name: s.name,
+      sessionDate: s.sessionDate ? String(s.sessionDate).slice(0, 10) : null,
+      sessionPeriod: s.sessionPeriod,
+      startDateTime: s.startDateTime,
+      matchDurationMinutes: s.matchDurationMinutes,
+      breakIntervalMinutes: s.breakIntervalMinutes,
+      courtCount: s.courtCount,
+      courts: courts.length > 0
+        ? courts
+        : Array.from({ length: s.courtCount ?? 0 }, (_, i) => `Court ${i + 1}`),
+      gameMode: s.gameMode,
+    },
+    players: adaptSessionPlayers(s.sessionPlayers ?? []),
+    rounds,
+    history: { partner: {}, opponent: {} },
+    isBroadcasting: false,
+    selectedBroadcastRoundNumber: rounds.length > 0 ? rounds[rounds.length - 1].roundNumber : null,
+  }
 }
 
 function createSessionPlayer(player) {
@@ -671,57 +756,86 @@ function reducer(state, action) {
       return { ...state, error: null }
 
     case 'RESET':
+      return initialState
+
+    case 'UPDATE_SESSIONS':
+      return { ...state, sessions: action.payload }
+
+    // Update roundsPlayed / sitOutCount on current session players from a just-generated round
+    case 'UPDATE_PLAYER_STATS_FROM_ROUND': {
+      const { playedIds, sitOutIds } = action.payload
+      return updateCurrentSession(state, session => ({
+        ...session,
+        players: session.players.map(p => ({
+          ...p,
+          roundsPlayed: playedIds.has(p.id) ? p.roundsPlayed + 1 : p.roundsPlayed,
+          sitOutCount: sitOutIds.has(p.id) ? p.sitOutCount + 1 : p.sitOutCount,
+        })),
+      }))
+    }
+
+    case 'ADD_PLAYER_DIRECT': {
+      const player = action.payload
+      const inLibrary = state.playerLibrary.some(p => p.id === player.id)
       return {
         ...state,
-        currentSessionId: null,
-        error: null,
+        playerLibrary: inLibrary
+          ? state.playerLibrary
+          : [...state.playerLibrary, { id: player.id, name: player.name, gender: player.gender, rating: player.rating, plannedRounds: player.plannedRounds ?? 0 }],
+        sessions: state.sessions.map(session =>
+          session.id === state.currentSessionId
+            ? { ...session, players: [...session.players, player] }
+            : session
+        ),
       }
+    }
 
     default:
       return state
   }
 }
 
-const STORAGE_KEY = 'social-tennis-session'
-
-async function generateRoundForSession(sessionRecord, historyOverride = null) {
-  const sessionIssue = getSessionScheduleIssue(sessionRecord?.session)
-  if (sessionIssue) throw new Error(sessionIssue)
-
-  const eligible = getEligiblePlayers(sessionRecord.players)
-  const courts = getSessionCourts(sessionRecord.session)
-  const history = historyOverride ?? sessionRecord.history
-  const algorithmPlayers = eligible.map(player => ({
-    id: player.id,
-    rating: player.rating,
-    sitOutCount: player.sitOutCount,
-  }))
-
-  const result = await generateSchedule(algorithmPlayers, courts, history)
-
-  return {
-    ...result,
-    roundNumber: sessionRecord.rounds.length + 1,
-    isConfirmed: false,
-    generatedAt: new Date().toISOString(),
-    historySnapshot: cloneHistory(history),
-    reshuffleUndoSnapshot: null,
-  }
-}
-
 export function SessionProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState, () => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      return saved ? migrateLegacyState(JSON.parse(saved)) : initialState
-    } catch {
-      return initialState
-    }
-  })
+  const { token, isAuthenticated } = useAuth()
+  const [state, dispatch] = useReducer(reducer, initialState)
 
+  // Load from backend whenever auth state changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    if (!isAuthenticated || !token) {
+      dispatch({ type: 'RESET' })
+      return
+    }
+    loadAll()
+  }, [isAuthenticated, token])
+
+  async function loadAll() {
+    try {
+      const [sessions, players] = await Promise.all([
+        api.getSessions(token),
+        api.getPlayers(token),
+      ])
+      const adapted = sessions.map(adaptBackendSession)
+      const library = players.map(p => ({
+        id: p.id, name: p.name, gender: p.gender,
+        rating: Number(p.rating ?? 0), plannedRounds: 0,
+      }))
+      const maxSession = Math.max(0, ...adapted.map(s => s.id))
+      const maxPlayer  = Math.max(0, ...players.map(p => p.id))
+      dispatch({
+        type: 'LOAD_STATE',
+        payload: {
+          sessions: adapted,
+          playerLibrary: library,
+          currentSessionId: adapted.length > 0 ? adapted[0].id : null,
+          nextSessionId: maxSession + 1,
+          nextPlayerId:  maxPlayer  + 1,
+          error: null,
+        },
+      })
+    } catch {
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load data from server.' })
+    }
+  }
 
   const currentSession = useMemo(() => getCurrentSessionRecord(state), [state])
   const playerDatabase = useMemo(
@@ -730,37 +844,34 @@ export function SessionProvider({ children }) {
   )
 
   async function generateFirstRound() {
-    try {
-      if (!currentSession) {
-        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
-        return
-      }
-
-      const nextRound = await generateRoundForSession(currentSession)
-      dispatch({ type: 'SET_FIRST_ROUND', payload: nextRound })
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error.message })
-    }
+    return generateRoundFromPlayers()
   }
 
   async function generateRoundFromPlayers() {
     try {
-      if (!currentSession) {
+      if (!state.currentSessionId) {
         dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
         return false
       }
+      const sessionIssue = getSessionScheduleIssue(currentSession?.session)
+      if (sessionIssue) {
+        console.warn('[generate] blocked by sessionIssue:', sessionIssue)
+        dispatch({ type: 'SET_ERROR', payload: sessionIssue })
+        return false
+      }
+      const roundData = await api.generateRound(state.currentSessionId, token)
+      const adaptedRound = adaptBackendRound(roundData)
 
-      const roundSeedSession = currentSession.rounds.length === 0
-        ? currentSession
-        : {
-            ...currentSession,
-            rounds: currentSession.rounds.map((round, index) =>
-              index === currentSession.rounds.length - 1 ? { ...round, isConfirmed: true } : round
-            ),
-          }
+      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
 
-      const nextRound = await generateRoundForSession(roundSeedSession)
-      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: nextRound })
+      // Update player stats locally from the round result — avoids a full session
+      // reload that can overwrite the correctly adapted round with stale data
+      const playedIds = new Set(
+        adaptedRound.matches.flatMap(m => m.teams.flat().map(p => p.id))
+      )
+      const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
+      dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
+
       return true
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
@@ -774,33 +885,23 @@ export function SessionProvider({ children }) {
         dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
         return
       }
-
-      const currentRound = currentSession.rounds[currentSession.rounds.length - 1]
-      if (!currentRound) {
-        dispatch({ type: 'SET_ERROR', payload: 'No current round available.' })
-        return
+      const lastRound = currentSession.rounds[currentSession.rounds.length - 1]
+      if (lastRound?._dbId && !lastRound.isConfirmed) {
+        await api.confirmRound(lastRound._dbId, token)
       }
-
-      const { newHistory, updatedPlayers } = applyRoundToState(currentRound, currentSession.history, currentSession.players)
-      const eligible = getEligiblePlayers(updatedPlayers)
-
-      if (eligible.length < 4) {
-        dispatch({
-          type: 'SET_NEXT_ROUND',
-          payload: { updatedPlayers, newHistory, result: null },
-        })
-        return
+      const eligible = getEligiblePlayers(currentSession.players)
+      if (eligible.length >= 4) {
+        const roundData = await api.generateRound(state.currentSessionId, token)
+        const adaptedRound = adaptBackendRound(roundData)
+        dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+        const playedIds = new Set(
+          adaptedRound.matches.flatMap(m => m.teams.flat().map(p => p.id))
+        )
+        const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
+        dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
+      } else {
+        dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
       }
-
-      const nextRound = await generateRoundForSession(
-        { ...currentSession, players: updatedPlayers, history: newHistory, rounds: currentSession.rounds },
-        newHistory
-      )
-
-      dispatch({
-        type: 'SET_NEXT_ROUND',
-        payload: { updatedPlayers, newHistory, result: nextRound },
-      })
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
     }
@@ -808,24 +909,17 @@ export function SessionProvider({ children }) {
 
   async function reshuffleRound(roundIdx) {
     try {
-      if (!currentSession) {
-        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
-        return
-      }
-
+      if (!currentSession) return
       const round = currentSession.rounds[roundIdx]
       if (!round) return
-
+      // Reshuffle is local-only: re-generate using the old stateless endpoint
+      const { generateSchedule } = await import('../services/schedulerService')
       const result = await generateSchedule(
         getRoundPlayerPool(round),
         getRoundCourts(round),
         cloneHistory(round.historySnapshot ?? currentSession.history)
       )
-
-      dispatch({
-        type: 'RESHUFFLE_ROUND_RESULT',
-        payload: { roundIdx, result },
-      })
+      dispatch({ type: 'RESHUFFLE_ROUND_RESULT', payload: { roundIdx, result } })
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
     }
@@ -851,19 +945,182 @@ export function SessionProvider({ children }) {
     error: state.error,
   }
 
+  async function setSession(config) {
+    try {
+      const created = await api.createSession({
+        name: config.name,
+        sessionDate: config.sessionDate || null,
+        sessionPeriod: config.sessionPeriod || null,
+        startDateTime: config.startDateTime || null,
+        matchDurationMinutes: config.matchDurationMinutes ? Number(config.matchDurationMinutes) : null,
+        breakIntervalMinutes: config.breakIntervalMinutes ? Number(config.breakIntervalMinutes) : null,
+        courtCount: config.courtCount ? Number(config.courtCount) : null,
+        gameMode: config.gameMode || null,
+      }, token)
+
+      if (Array.isArray(config.courts) && config.courts.length > 0) {
+        const courts = config.courts.map((courtName, i) => {
+          const match = courtName.match(/(\d+)/)
+          const courtNumber = match ? parseInt(match[1]) : i + 1
+          return { courtNumber, courtName, isAvailable: true, priorityOrder: i + 1 }
+        })
+        await api.bulkSetCourts(created.id, courts, token)
+      }
+
+      await api.activateSession(created.id, token)
+
+      // Reload sessions in background — non-fatal if it fails
+      try {
+        await loadAll()
+      } catch {
+        // Minimal local state so the UI doesn't break before next reload
+        dispatch({
+          type: 'SET_SESSION',
+          payload: {
+            name: config.name, sessionDate: config.sessionDate,
+            sessionPeriod: config.sessionPeriod, startDateTime: config.startDateTime,
+            matchDurationMinutes: config.matchDurationMinutes,
+            breakIntervalMinutes: config.breakIntervalMinutes,
+            courtCount: config.courtCount, courts: config.courts, gameMode: config.gameMode,
+          },
+        })
+      }
+
+      dispatch({ type: 'SELECT_SESSION', payload: created.id })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      throw err
+    }
+  }
+
+  async function updateSessionConfig(sessionId, updates) {
+    try {
+      const body = {}
+      if (updates.name !== undefined)                 body.name = updates.name
+      if (updates.sessionDate !== undefined)          body.sessionDate = updates.sessionDate
+      if (updates.sessionPeriod !== undefined)        body.sessionPeriod = updates.sessionPeriod
+      if (updates.startDateTime !== undefined)        body.startDateTime = updates.startDateTime
+      if (updates.matchDurationMinutes !== undefined) body.matchDurationMinutes = Number(updates.matchDurationMinutes)
+      if (updates.breakIntervalMinutes !== undefined) body.breakIntervalMinutes = Number(updates.breakIntervalMinutes)
+      if (updates.courtCount !== undefined)           body.courtCount = Number(updates.courtCount)
+      if (updates.gameMode !== undefined)             body.gameMode = updates.gameMode
+
+      await api.updateSession(sessionId, body, token)
+
+      if (Array.isArray(updates.courts) && updates.courts.length > 0) {
+        const courts = updates.courts.map((courtName, i) => {
+          const match = courtName.match(/(\d+)/)
+          const courtNumber = match ? parseInt(match[1]) : i + 1
+          return { courtNumber, courtName, isAvailable: true, priorityOrder: i + 1 }
+        })
+        await api.bulkSetCourts(sessionId, courts, token)
+      }
+
+      dispatch({ type: 'UPDATE_SESSION_CONFIG', payload: { sessionId, updates } })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      throw err
+    }
+  }
+
+  async function deleteSession(sessionId) {
+    try {
+      await api.deleteSession(sessionId, token)
+      dispatch({ type: 'DELETE_SESSION', payload: sessionId })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
+  }
+
+  async function addPlayer(playerData) {
+    try {
+      if (!state.currentSessionId) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return
+      }
+      const player = await api.createPlayer({
+        name: playerData.name,
+        gender: playerData.gender || null,
+        rating: Number(playerData.rating ?? 0),
+      }, token)
+
+      const sp = await api.addPlayerToSession({
+        sessionId: state.currentSessionId,
+        playerId: player.id,
+        plannedRounds: Number(playerData.plannedRounds ?? 0),
+      }, token)
+
+      dispatch({
+        type: 'ADD_PLAYER_DIRECT',
+        payload: {
+          id: player.id,
+          name: player.name,
+          gender: player.gender,
+          rating: Number(player.rating ?? 0),
+          plannedRounds: Number(playerData.plannedRounds ?? 0),
+          roundsPlayed: 0,
+          sitOutCount: 0,
+          status: 'active',
+          _sessionPlayerId: sp.id,
+        },
+      })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      throw err
+    }
+  }
+
+  async function updatePlayer(id, updates) {
+    try {
+      await api.updatePlayer(id, {
+        name: updates.name,
+        gender: updates.gender,
+        rating: updates.rating !== undefined ? Number(updates.rating) : undefined,
+      }, token)
+      dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
+  }
+
+  async function togglePlayerStatus(playerId) {
+    const player = currentSession?.players.find(p => p.id === playerId)
+    const newDbStatus = player?.status === 'active' ? 'RESTING' : 'ACTIVE'
+    if (player?._sessionPlayerId) {
+      try {
+        await api.updateSessionPlayer(player._sessionPlayerId, { status: newDbStatus }, token)
+      } catch (err) {
+        dispatch({ type: 'SET_ERROR', payload: err.message })
+        return
+      }
+    }
+    dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: playerId })
+  }
+
+  async function removePlayer(playerId) {
+    const player = currentSession?.players.find(p => p.id === playerId)
+    if (player?._sessionPlayerId) {
+      try {
+        await api.removePlayerFromSession(player._sessionPlayerId, token)
+      } catch (err) {
+        dispatch({ type: 'SET_ERROR', payload: err.message })
+        return
+      }
+    }
+    dispatch({ type: 'REMOVE_PLAYER', payload: playerId })
+  }
+
   const actions = {
-    setSession: (session) => dispatch({ type: 'SET_SESSION', payload: session }),
-    createSession: (session) => dispatch({ type: 'SET_SESSION', payload: session }),
+    setSession,
+    createSession: setSession,
     selectSession: (sessionId) => dispatch({ type: 'SELECT_SESSION', payload: sessionId }),
-    updateSessionConfig: (sessionId, updates) =>
-      dispatch({ type: 'UPDATE_SESSION_CONFIG', payload: { sessionId, updates } }),
-    updateSession: (sessionId, updates) =>
-      dispatch({ type: 'UPDATE_SESSION_CONFIG', payload: { sessionId, updates } }),
-    deleteSession: (sessionId) => dispatch({ type: 'DELETE_SESSION', payload: sessionId }),
-    addPlayer: (player) => dispatch({ type: 'ADD_PLAYER', payload: player }),
-    updatePlayer: (id, updates) => dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } }),
-    removePlayer: (id) => dispatch({ type: 'REMOVE_PLAYER', payload: id }),
-    togglePlayerStatus: (id) => dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: id }),
+    updateSessionConfig,
+    updateSession: updateSessionConfig,
+    deleteSession,
+    addPlayer,
+    updatePlayer,
+    removePlayer,
+    togglePlayerStatus,
     generateFirstRound,
     generateRoundFromPlayers,
     confirmAndGenerateNext,

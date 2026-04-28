@@ -136,13 +136,14 @@ function isValidDateTimeValue(value) {
 }
 
 export default function SetupPage() {
-  const { state, setSession, selectSession, updateSessionConfig, deleteSession } = useSession()
+  const { state, setSession, selectSession, updateSessionConfig, deleteSession, clearError } = useSession()
   const navigate = useNavigate()
   const sessionPickerRef = useRef(null)
   const startDateTimeInputRef = useRef(null)
   const courtPickerRef = useRef(null)
   const [form, setForm] = useState(getDefaultFormState)
   const [errors, setErrors] = useState({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSessionPickerOpen, setIsSessionPickerOpen] = useState(false)
   const [isCourtPickerOpen, setIsCourtPickerOpen] = useState(false)
   const [editingSessionId, setEditingSessionId] = useState(null)
@@ -169,8 +170,9 @@ export default function SetupPage() {
     return e
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
+    clearError()
     const errs = validate()
     if (Object.keys(errs).length) {
       setErrors(errs)
@@ -189,15 +191,21 @@ export default function SetupPage() {
       gameMode: form.gameMode,
     }
 
-    if (editingSessionId != null) {
-      updateSessionConfig(editingSessionId, sessionConfig)
-      selectSession(editingSessionId)
-      setEditingSessionId(null)
-    } else {
-      setSession(sessionConfig)
+    setIsSubmitting(true)
+    try {
+      if (editingSessionId != null) {
+        await updateSessionConfig(editingSessionId, sessionConfig)
+        selectSession(editingSessionId)
+        setEditingSessionId(null)
+      } else {
+        await setSession(sessionConfig)
+      }
+      navigate('/players')
+    } catch {
+      // error is displayed via state.error below
+    } finally {
+      setIsSubmitting(false)
     }
-
-    navigate('/players')
   }
 
   const sessions = [...state.sessions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -570,12 +578,22 @@ export default function SetupPage() {
                 </div>
               </div>
 
+              {state.error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {state.error}
+                </div>
+              )}
+
               <button
                 type="submit"
+                disabled={isSubmitting}
                 style={{ backgroundColor: editingSessionId != null ? '#166534' : '#e8503a' }}
-                className="w-full py-3.5 active:scale-[0.98] text-white font-black rounded-xl transition-all duration-200 text-sm shadow-sm hover:shadow-md hover:brightness-90"
+                className="w-full py-3.5 active:scale-[0.98] text-white font-black rounded-xl transition-all duration-200 text-sm shadow-sm hover:shadow-md hover:brightness-90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {editingSessionId != null ? 'Update Session →' : 'New Session →'}
+                {isSubmitting
+                  ? (editingSessionId != null ? 'Saving…' : 'Creating…')
+                  : (editingSessionId != null ? 'Update Session →' : 'New Session →')
+                }
               </button>
             </form>
           </div>

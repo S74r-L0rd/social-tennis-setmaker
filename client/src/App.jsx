@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionProvider } from './context/SessionContext'
+import { AuthProvider } from './context/AuthContext'
+import { useAuth } from './context/AuthContext'
 import Navbar from './components/layout/Navbar'
 import HomePage from './pages/HomePage'
 import AuthPage from './pages/AuthPage'
@@ -8,6 +10,12 @@ import SetupPage from './pages/SetupPage'
 import PlayersPage from './pages/PlayersPage'
 import SchedulePage from './pages/SchedulePage'
 import BroadcastPage from './pages/BroadcastPage'
+
+function ProtectedRoute({ children }) {
+  const { isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/auth" replace />
+  return children
+}
 
 function SiteFooter() {
   return (
@@ -47,6 +55,7 @@ function SiteFooter() {
 
 export default function App() {
   return (
+    <AuthProvider>
     <SessionProvider>
       <BrowserRouter>
         <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#faf6f0' }}>
@@ -55,10 +64,10 @@ export default function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/auth" element={<AuthPage />} />
-              <Route path="/fairness-analysis" element={<FairnessAnalysisPage />} />
-              <Route path="/setup" element={<SetupPage />} />
-              <Route path="/players" element={<PlayersPage />} />
-              <Route path="/schedule" element={<SchedulePage />} />
+              <Route path="/fairness-analysis" element={<ProtectedRoute><FairnessAnalysisPage /></ProtectedRoute>} />
+              <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
+              <Route path="/players" element={<ProtectedRoute><PlayersPage /></ProtectedRoute>} />
+              <Route path="/schedule" element={<ProtectedRoute><SchedulePage /></ProtectedRoute>} />
               <Route path="/broadcast" element={<BroadcastPage />} />
             </Routes>
           </main>
@@ -66,5 +75,6 @@ export default function App() {
         </div>
       </BrowserRouter>
     </SessionProvider>
+    </AuthProvider>
   )
 }

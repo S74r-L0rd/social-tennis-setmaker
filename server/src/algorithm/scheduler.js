@@ -256,13 +256,19 @@ function generateRound(players, courts, history, config = {}) {
 /**
  * Applies the results of a generated round to the history object.
  *
+ * NOTE: This function operates on in-memory objects only and is intended
+ * for use in unit tests and example scripts. In the production API flow,
+ * persistence is handled directly by POST /api/rounds/generate, which:
+ *   - saves Round, Match, MatchAssignment, and RoundSitOut to PostgreSQL
+ *   - increments SessionPlayer.roundsPlayed and SessionPlayer.sitOutCount
+ *   - rebuilds partner/opponent history from the Match/MatchAssignment
+ *     tables on each subsequent call to generateRound
+ * Do not call this function in API route handlers.
+ *
  * This updates:
  * - partner frequencies for players on the same team
  * - opponent frequencies for players on opposite teams
  * - sit-out counts for players who did not play
- *
- * This updated history should be persisted after each round so that
- * future scheduling decisions can account for earlier matches.
  *
  * @param {{
  *   matches: Array<{

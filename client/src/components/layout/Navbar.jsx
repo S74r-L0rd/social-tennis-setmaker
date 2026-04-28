@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 
 const STEPS = [
   { path: '/setup',     label: 'Setup',     step: 1 },
@@ -11,6 +12,7 @@ const STEPS = [
 export default function Navbar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { isAuthenticated, user, logout } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const currentStep = STEPS.find(s => s.path === location.pathname)?.step ?? 0
@@ -66,15 +68,28 @@ export default function Navbar() {
           </nav>
         </div>
 
-        {/* Right: Log in */}
+        {/* Right: auth */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate('/auth')}
-            className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-bold text-white border border-white/20 hover:bg-white/10 transition-all duration-200"
-          >
-            Log in
-          </button>
+          {isAuthenticated ? (
+            <div className="hidden sm:flex items-center gap-3">
+              <span className="text-sm font-bold text-green-200">{user?.name}</span>
+              <button
+                type="button"
+                onClick={() => { logout(); navigate('/') }}
+                className="px-4 py-2 rounded-lg text-sm font-bold text-white border border-white/20 hover:bg-white/10 transition-all duration-200"
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate('/auth')}
+              className="hidden sm:inline-flex px-4 py-2 rounded-lg text-sm font-bold text-white border border-white/20 hover:bg-white/10 transition-all duration-200"
+            >
+              Log in
+            </button>
+          )}
 
           <button
             type="button"
@@ -128,13 +143,26 @@ export default function Navbar() {
             </button>
 
             <div className="mt-2 border-t border-white/10 pt-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => navigate('/auth')}
-                className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-green-100 hover:bg-white/10 transition-all"
-              >
-                Log in
-              </button>
+              {isAuthenticated ? (
+                <>
+                  <p className="px-4 py-2 text-sm font-bold text-green-300">{user?.name}</p>
+                  <button
+                    type="button"
+                    onClick={() => { logout(); navigate('/') }}
+                    className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-green-100 hover:bg-white/10 transition-all"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate('/auth')}
+                  className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-green-100 hover:bg-white/10 transition-all"
+                >
+                  Log in
+                </button>
+              )}
             </div>
           </div>
         </div>
