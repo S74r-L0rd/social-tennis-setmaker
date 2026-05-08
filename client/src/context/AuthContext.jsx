@@ -52,6 +52,10 @@ export function AuthProvider({ children }) {
     setAuth({ user: null, token: null })
   }
 
+  function updateUser(updatedUser) {
+    storeAuth(updatedUser, auth.token)
+  }
+
   return (
     <AuthContext.Provider value={{
       user: auth.user,
@@ -60,6 +64,7 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
+      updateUser,
     }}>
       {children}
     </AuthContext.Provider>
