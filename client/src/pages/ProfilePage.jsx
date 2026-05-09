@@ -156,7 +156,7 @@ export default function ProfilePage() {
   return (
     <div className="max-w-6xl mx-auto py-6 sm:py-8 animate-fade-in">
       <section className="grid gap-6 md:grid-cols-2 md:items-start">
-        <div className="rounded-[28px] border border-stone-200 bg-white shadow-sm overflow-hidden animate-slide-up sticky top-6">
+        <div className="rounded-[28px] border border-stone-200 bg-white shadow-sm overflow-hidden animate-slide-up lg:sticky lg:top-6">
           <div className="px-8 pt-10 pb-8 sm:px-10 sm:pt-12 sm:pb-10">
             <div className="flex min-w-0 items-center justify-between gap-4 sm:gap-6">
               <div className="flex min-w-0 items-center gap-5 sm:gap-6">
