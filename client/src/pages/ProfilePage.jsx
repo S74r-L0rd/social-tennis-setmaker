@@ -158,8 +158,8 @@ export default function ProfilePage() {
       <section className="grid gap-6 md:grid-cols-2 md:items-start">
         <div className="rounded-[28px] border border-stone-200 bg-white shadow-sm overflow-hidden animate-slide-up lg:sticky lg:top-6">
           <div className="px-8 pt-10 pb-8 sm:px-10 sm:pt-12 sm:pb-10">
-            <div className="flex min-w-0 items-center justify-between gap-4 sm:gap-6">
-              <div className="flex min-w-0 items-center gap-5 sm:gap-6">
+            <div className="flex min-w-0 flex-col items-start gap-4 sm:gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex min-w-0 w-full items-center gap-5 sm:gap-6 md:w-auto">
                 <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[24px] bg-green-900 text-2xl font-black text-white shadow-sm">
                   {initials}
                 </div>
@@ -171,7 +171,7 @@ export default function ProfilePage() {
               </div>
 
               {isEditing ? (
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:shrink-0 md:justify-end">
                   <button
                     type="submit"
                     form="profile-form"
@@ -191,7 +191,7 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={handleStartEdit}
-                  className="shrink-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-green-900 shadow-sm transition-all duration-200 hover:bg-stone-100"
+                  className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-black text-green-900 shadow-sm transition-all duration-200 hover:bg-stone-100 md:shrink-0"
                 >
                   Edit
                 </button>
