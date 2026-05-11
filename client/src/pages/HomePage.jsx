@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const FEATURES = [
   {
@@ -39,6 +40,7 @@ function UnderlinedWord({ children }) {
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-24 py-12 animate-fade-in">
@@ -59,17 +61,19 @@ export default function HomePage() {
           Manage players and organise each round with less guesswork.
         </p>
         <div className="flex flex-col sm:flex-row items-center gap-3">
-          <button
-            onClick={() => navigate('/auth')}
-            className="px-8 py-4 rounded-xl text-green-900 font-black text-base border border-green-900/15 bg-white shadow-sm hover:shadow-md hover:border-green-900/30 active:scale-[0.98] transition-all duration-200"
-          >
-            Log In
-          </button>
+          {!isAuthenticated && (
+            <button
+              onClick={() => navigate('/auth')}
+              className="px-8 py-4 rounded-xl text-green-900 font-black text-base border border-green-900/15 bg-white shadow-sm hover:shadow-md hover:border-green-900/30 active:scale-[0.98] transition-all duration-200"
+            >
+              Log In
+            </button>
+          )}
           <button
             onClick={() => navigate('/setup')}
             style={{ backgroundColor: '#e8503a' }}
             className="px-10 py-4 rounded-xl text-white font-black text-base shadow-sm hover:shadow-md hover:brightness-90 active:scale-[0.98] transition-all duration-200">
-            Start New Session →
+            {isAuthenticated ? 'Continue to Sessions →' : 'Start New Session →'}
           </button>
         </div>
       </div>
