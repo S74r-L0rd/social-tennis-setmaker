@@ -72,7 +72,17 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           {isAuthenticated ? (
             <div className="hidden sm:flex items-center gap-3">
-              <span className="text-sm font-bold text-green-200">{user?.name}</span>
+              <button
+                type="button"
+                onClick={() => navigate('/profile')}
+                className={`rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 ${
+                  location.pathname === '/profile'
+                    ? 'bg-coral-500 text-white shadow-sm'
+                    : 'text-green-200 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {user?.name || 'Profile'}
+              </button>
               <button
                 type="button"
                 onClick={() => { logout(); navigate('/') }}
@@ -145,7 +155,17 @@ export default function Navbar() {
             <div className="mt-2 border-t border-white/10 pt-3 flex flex-col gap-2">
               {isAuthenticated ? (
                 <>
-                  <p className="px-4 py-2 text-sm font-bold text-green-300">{user?.name}</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/profile')}
+                    className={`w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition-all ${
+                      location.pathname === '/profile'
+                        ? 'bg-coral-500 text-white shadow-sm'
+                        : 'text-green-100 hover:bg-white/10'
+                    }`}
+                  >
+                    {user?.name || 'Profile'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => { logout(); navigate('/') }}

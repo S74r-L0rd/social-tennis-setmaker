@@ -10,6 +10,7 @@ import SetupPage from './pages/SetupPage'
 import PlayersPage from './pages/PlayersPage'
 import SchedulePage from './pages/SchedulePage'
 import BroadcastPage from './pages/BroadcastPage'
+import ProfilePage from './pages/ProfilePage'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
               <Route path="/players" element={<ProtectedRoute><PlayersPage /></ProtectedRoute>} />
               <Route path="/schedule" element={<ProtectedRoute><SchedulePage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
               <Route path="/broadcast" element={<BroadcastPage />} />
             </Routes>
           </main>
