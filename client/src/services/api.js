@@ -40,4 +40,9 @@ export const api = {
   generateRound:  (sessionId, token) => request('POST', '/api/rounds/generate',              { sessionId }, token),
   getRounds:      (sid, token)       => request('GET',  `/api/rounds/session/${sid}`,         undefined,     token),
   confirmRound:   (id, token)        => request('POST', `/api/rounds/${id}/confirm`,          undefined,     token),
+
+  // Profile
+  getMe:          (token)       => request('GET',  '/api/auth/me',       undefined, token),
+  updateProfile:  (body, token) => request('PUT',  '/api/auth/profile',  body,      token),
+  changePassword: (body, token) => request('PUT',  '/api/auth/password', body,      token),
 }

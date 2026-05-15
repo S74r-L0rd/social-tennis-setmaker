@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { createUser, getUserByEmail } = require("../repositories/userRepository");
+const { createUser, getUserByEmail, getUserById, updateUser } = require("../repositories/userRepository");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
@@ -81,9 +81,80 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// GET /api/auth/me  — returns the logged-in user's profile
+// GET /api/auth/me
 router.get("/me", requireAuth, async (req, res) => {
-  res.status(200).json({ success: true, data: req.user });
+  try {
+    const user = await getUserById(req.user.userId);
+    if (!user) return res.status(404).json({ success: false, error: "User not found." });
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to fetch profile." });
+  }
+});
+
+// PUT /api/auth/profile — update name, email, club info
+router.put("/profile", requireAuth, async (req, res) => {
+  try {
+    const { name, email, clubName, clubCountry, clubSuburb } = req.body;
+
+    if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+      return res.status(400).json({ success: false, error: "Name cannot be empty." });
+    }
+
+    if (email !== undefined && (typeof email !== "string" || !email.includes("@"))) {
+      return res.status(400).json({ success: false, error: "A valid email is required." });
+    }
+
+    if (email) {
+      const existing = await getUserByEmail(email.toLowerCase());
+      if (existing && existing.id !== req.user.userId) {
+        return res.status(409).json({ success: false, error: "This email is already in use." });
+      }
+    }
+
+    const updates = {};
+    if (name !== undefined)        updates.name        = name.trim();
+    if (email !== undefined)       updates.email       = email.toLowerCase();
+    if (clubName !== undefined)    updates.clubName    = clubName.trim() || null;
+    if (clubCountry !== undefined) updates.clubCountry = clubCountry.trim() || null;
+    if (clubSuburb !== undefined)  updates.clubSuburb  = clubSuburb.trim() || null;
+
+    const user = await updateUser(req.user.userId, updates);
+
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to update profile." });
+  }
+});
+
+// PUT /api/auth/password — change password
+router.put("/password", requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: "Current and new password are required." });
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: "New password must be at least 6 characters." });
+    }
+
+    const user = await getUserByEmail(req.user.email);
+    if (!user) return res.status(404).json({ success: false, error: "User not found." });
+
+    const match = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ success: false, error: "Current password is incorrect." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await updateUser(req.user.userId, { passwordHash });
+
+    res.status(200).json({ success: true, data: { message: "Password updated successfully." } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to update password." });
+  }
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { api } from '../services/api'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 const STORAGE_KEY = 'stm-auth'
@@ -52,8 +53,14 @@ export function AuthProvider({ children }) {
     setAuth({ user: null, token: null })
   }
 
-  function updateUser(updatedUser) {
-    storeAuth(updatedUser, auth.token)
+  async function updateProfile(updates) {
+    const user = await api.updateProfile(updates, auth.token)
+    storeAuth(user, auth.token)
+    return user
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    return api.changePassword({ currentPassword, newPassword }, auth.token)
   }
 
   return (
@@ -64,7 +71,8 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
-      updateUser,
+      updateProfile,
+      changePassword,
     }}>
       {children}
     </AuthContext.Provider>
