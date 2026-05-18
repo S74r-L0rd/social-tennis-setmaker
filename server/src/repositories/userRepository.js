@@ -14,8 +14,12 @@ async function getUserById(id) {
   return prisma.user.findUnique({ where: { id }, select: USER_SELECT });
 }
 
+async function getUserByIdWithHash(id) {
+  return prisma.user.findUnique({ where: { id } });
+}
+
 async function updateUser(id, data) {
   return prisma.user.update({ where: { id }, data, select: USER_SELECT });
 }
 
-module.exports = { createUser, getUserByEmail, getUserById, updateUser };
+module.exports = { createUser, getUserByEmail, getUserById, getUserByIdWithHash, updateUser };

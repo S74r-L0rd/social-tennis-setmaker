@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { createUser, getUserByEmail, getUserById, updateUser } = require("../repositories/userRepository");
+const { createUser, getUserByEmail, getUserById, getUserByIdWithHash, updateUser } = require("../repositories/userRepository");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
@@ -140,7 +140,7 @@ router.put("/password", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "New password must be at least 6 characters." });
     }
 
-    const user = await getUserByEmail(req.user.email);
+    const user = await getUserByIdWithHash(req.user.userId);
     if (!user) return res.status(404).json({ success: false, error: "User not found." });
 
     const match = await bcrypt.compare(currentPassword, user.passwordHash);
