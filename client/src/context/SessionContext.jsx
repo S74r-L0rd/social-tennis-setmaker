@@ -932,6 +932,7 @@ export function SessionProvider({ children }) {
       session: session.session,
       roundsCount: session.rounds.length,
       playersCount: session.players.length,
+      rounds: session.rounds,
     })),
     currentSessionId: state.currentSessionId,
     session: currentSession?.session ?? null,
