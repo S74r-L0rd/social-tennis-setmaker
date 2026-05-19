@@ -1048,7 +1048,7 @@ export function SessionProvider({ children }) {
       const sp = await api.addPlayerToSession({
         sessionId: state.currentSessionId,
         playerId: player.id,
-        plannedRounds: Number(playerData.plannedRounds ?? 0),
+        plannedRounds: Number(playerData.plannedRounds),
       }, token)
 
       dispatch({
@@ -1058,7 +1058,7 @@ export function SessionProvider({ children }) {
           name: player.name,
           gender: player.gender,
           rating: Number(player.rating ?? 0),
-          plannedRounds: Number(playerData.plannedRounds ?? 0),
+          plannedRounds: Number(playerData.plannedRounds),
           roundsPlayed: 0,
           sitOutCount: 0,
           status: 'active',
@@ -1073,14 +1073,26 @@ export function SessionProvider({ children }) {
 
   async function updatePlayer(id, updates) {
     try {
+      const sessionPlayer = currentSession?.players.find(player => player.id === id)
+
       await api.updatePlayer(id, {
         name: updates.name,
         gender: updates.gender,
         rating: updates.rating !== undefined ? Number(updates.rating) : undefined,
       }, token)
+
+      if (sessionPlayer?._sessionPlayerId && updates.plannedRounds !== undefined) {
+        await api.updateSessionPlayer(
+          sessionPlayer._sessionPlayerId,
+          { plannedRounds: Number(updates.plannedRounds) },
+          token
+        )
+      }
+
       dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } })
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message })
+      throw err
     }
   }
 

@@ -26,13 +26,10 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    if (
-      plannedRounds !== undefined &&
-      (!Number.isInteger(plannedRounds) || plannedRounds < 0)
-    ) {
+    if (!Number.isInteger(plannedRounds) || plannedRounds < 1) {
       return res.status(400).json({
         success: false,
-        error: "plannedRounds must be a non-negative integer.",
+        error: "plannedRounds must be a positive integer.",
       });
     }
 
@@ -134,11 +131,11 @@ router.put("/:id", requireAuth, async (req, res) => {
 
     if (
       req.body.plannedRounds !== undefined &&
-      (!Number.isInteger(req.body.plannedRounds) || req.body.plannedRounds < 0)
+      (!Number.isInteger(req.body.plannedRounds) || req.body.plannedRounds < 1)
     ) {
       return res.status(400).json({
         success: false,
-        error: "plannedRounds must be a non-negative integer.",
+        error: "plannedRounds must be a positive integer.",
       });
     }
 

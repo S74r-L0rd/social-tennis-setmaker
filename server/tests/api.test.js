@@ -227,6 +227,7 @@ async function testSessionPlayers() {
     const { status, data } = await req("POST", "/api/session-players", {
       sessionId,
       playerId,
+      plannedRounds: 1,
     }, token);
     assert(status === 201, `status 201 (got ${status})`);
     assert(data.data?.playerId === playerId, "playerId matches");
@@ -245,6 +246,7 @@ async function testSessionPlayers() {
     const { status, data } = await req("POST", "/api/session-players", {
       sessionId,
       playerId,
+      plannedRounds: 1,
     }, token);
     assert(status === 409, `status 409 (got ${status})`);
     assert(data.success === false, "success is false");
@@ -272,7 +274,7 @@ async function testRounds() {
       rating: 5 + i,
     }, token);
     createdPlayerIds.push(data.data.id);
-    await req("POST", "/api/session-players", { sessionId, playerId: data.data.id }, token);
+    await req("POST", "/api/session-players", { sessionId, playerId: data.data.id, plannedRounds: 1 }, token);
   }
 
   await test("POST /api/rounds/generate persists round and matches to DB", async () => {
