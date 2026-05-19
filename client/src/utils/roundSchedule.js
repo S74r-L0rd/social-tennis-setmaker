@@ -45,6 +45,18 @@ export function getRoundStartDate(sessionConfig, roundNumber) {
   return new Date(startDate.getTime() + roundOffsetMinutes * 60 * 1000)
 }
 
+export function getRoundSessionState(sessionConfig, roundNumber, now = new Date()) {
+  const roundStartDate = getRoundStartDate(sessionConfig, roundNumber)
+  if (!roundStartDate) return null
+
+  const matchDurationMinutes = Number(sessionConfig?.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES)
+  const roundEndDate = new Date(roundStartDate.getTime() + matchDurationMinutes * 60 * 1000)
+
+  if (now < roundStartDate) return 'upcoming'
+  if (now >= roundEndDate) return 'completed'
+  return 'in_progress'
+}
+
 export function formatRoundStartLabel(sessionConfig, roundNumber) {
   const roundStartDate = getRoundStartDate(sessionConfig, roundNumber)
   if (!roundStartDate) return null
@@ -56,4 +68,23 @@ export function formatRoundStartLabel(sessionConfig, roundNumber) {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+export function formatRoundStatusLabel(sessionConfig, roundNumber, now = new Date()) {
+  const sessionState = getRoundSessionState(sessionConfig, roundNumber, now)
+  if (sessionState === 'completed') return 'Completed'
+  if (sessionState === 'in_progress') return 'In Progress'
+
+  const startLabel = formatRoundStartLabel(sessionConfig, roundNumber)
+  return startLabel ? `Starts ${startLabel}` : 'Start time unavailable'
+}
+
+export function formatBroadcastRoundStatusLabel(sessionConfig, roundNumber, now = new Date()) {
+  const sessionState = getRoundSessionState(sessionConfig, roundNumber, now)
+  const startLabel = formatRoundStartLabel(sessionConfig, roundNumber)
+
+  if (!startLabel) return 'Start time unavailable'
+  if (sessionState === 'completed') return `Completed · Started at ${startLabel}`
+  if (sessionState === 'in_progress') return `In Progress · Started at ${startLabel}`
+  return `Upcoming · Starts at ${startLabel}`
 }

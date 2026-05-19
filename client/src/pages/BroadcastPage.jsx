@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from '../context/SessionContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { RatingBadge, GenderBadge } from '../components/ui/Badge'
-import { DEFAULT_MATCH_DURATION_MINUTES, formatRoundStartLabel, getRoundStartDate } from '../utils/roundSchedule'
+import { formatBroadcastRoundStatusLabel, getRoundSessionState } from '../utils/roundSchedule'
 
 const SESSION_STATES = [
   { key: 'all', label: 'All Rounds' },
@@ -10,20 +10,6 @@ const SESSION_STATES = [
   { key: 'in_progress', label: 'In Progress Session' },
   { key: 'completed', label: 'Completed Session' },
 ]
-
-function getRoundSessionState(sessionConfig, round, now = new Date()) {
-  if (!round) return null
-
-  const roundStartDate = getRoundStartDate(sessionConfig, round.roundNumber)
-  if (!roundStartDate) return null
-
-  const matchDurationMinutes = Number(sessionConfig?.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES)
-  const roundEndDate = new Date(roundStartDate.getTime() + matchDurationMinutes * 60 * 1000)
-
-  if (now < roundStartDate) return 'upcoming'
-  if (now >= roundEndDate) return 'completed'
-  return 'in_progress'
-}
 
 function PlayerChip({ player, showRatings }) {
   if (!player) return null
@@ -36,8 +22,8 @@ function PlayerChip({ player, showRatings }) {
   )
 }
 
-function BroadcastRound({ round, session, getPlayerById, showRatings }) {
-  const roundStartLabel = formatRoundStartLabel(session, round.roundNumber)
+function BroadcastRound({ round, session, getPlayerById, showRatings, currentTime }) {
+  const roundStatusLabel = formatBroadcastRoundStatusLabel(session, round.roundNumber, currentTime)
   const sitOuts = round.sitOuts ?? []
 
   return (
@@ -54,15 +40,9 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
           <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="flex flex-col items-start gap-2 px-4 py-4 bg-green-900 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6">
               <span className="text-xs font-black text-white uppercase tracking-widest">{match.court}</span>
-              {roundStartLabel ? (
-                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
-                  Starts {roundStartLabel}
-                </span>
-              ) : (
-                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
-                  Start time unavailable
-                </span>
-              )}
+              <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
+                {roundStatusLabel}
+              </span>
             </div>
             <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5">
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
@@ -130,7 +110,7 @@ export default function BroadcastPage() {
 
   const roundsWithState = state.rounds.map(round => ({
     ...round,
-    sessionState: getRoundSessionState(state.session, round, currentTime),
+    sessionState: getRoundSessionState(state.session, round.roundNumber, currentTime),
   }))
 
   const visibleRounds = selectedSessionState === 'all'
@@ -266,7 +246,13 @@ export default function BroadcastPage() {
           )}
 
           {broadcastRound && (
-            <BroadcastRound round={broadcastRound} session={state.session} getPlayerById={getPlayerById} showRatings={showRatings} />
+            <BroadcastRound
+              round={broadcastRound}
+              session={state.session}
+              getPlayerById={getPlayerById}
+              showRatings={showRatings}
+              currentTime={currentTime}
+            />
           )}
         </div>
       )}

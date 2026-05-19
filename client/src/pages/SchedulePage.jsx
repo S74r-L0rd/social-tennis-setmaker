@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { useSession } from '../context/SessionContext'
 import RoundPanel from '../components/schedule/RoundPanel'
-import { formatRoundStartLabel, getSessionScheduleIssue } from '../utils/roundSchedule'
+import { formatRoundStatusLabel, getSessionScheduleIssue } from '../utils/roundSchedule'
 
 function formatGeneratedAt(value) {
   if (!value) return null
@@ -23,11 +23,20 @@ export default function SchedulePage() {
   const [activeTab, setActiveTab] = useState(() => Math.max(0, state.rounds.length - 1))
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [isGeneratingNext, setIsGeneratingNext] = useState(false)
+  const [currentTime, setCurrentTime] = useState(() => new Date())
 
   useEffect(() => {
     const maxRoundIdx = Math.max(0, state.rounds.length - 1)
     setActiveTab(prev => Math.min(Math.max(prev, 0), maxRoundIdx))
   }, [state.currentSessionId, state.rounds.length])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(new Date())
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -43,7 +52,9 @@ export default function SchedulePage() {
   const isRoundEditable = Boolean(currentRound && !currentRound.isConfirmed)
   const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)
-  const roundStartLabel = currentRound ? formatRoundStartLabel(state.session, currentRound.roundNumber) : null
+  const roundStatusLabel = currentRound
+    ? formatRoundStatusLabel(state.session, currentRound.roundNumber, currentTime)
+    : null
 
   function handleDragEnd({ active, over }) {
     if (!isRoundEditable) return
@@ -201,7 +212,7 @@ export default function SchedulePage() {
 
       {currentRound && (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <RoundPanel round={currentRound} isEditable={isRoundEditable} roundStartLabel={roundStartLabel} />
+          <RoundPanel round={currentRound} isEditable={isRoundEditable} roundStatusLabel={roundStatusLabel} />
         </DndContext>
       )}
 
