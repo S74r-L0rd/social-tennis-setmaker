@@ -3,6 +3,7 @@ const {
   createPlayer,
   getAllPlayers,
   getPlayerById,
+  getPlayerScheduleUsage,
   updatePlayer,
   deletePlayer,
 } = require("../repositories/playerRepository");
@@ -161,6 +162,14 @@ router.delete("/:id", requireAuth, async (req, res) => {
       return res.status(404).json({
         success: false,
         error: "Player not found.",
+      });
+    }
+
+    const usage = await getPlayerScheduleUsage(playerId);
+    if (usage.matchAssignments > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "This player is already scheduled in a match. Clear the schedule before deleting them.",
       });
     }
 

@@ -20,6 +20,23 @@ async function getPlayerById(id) {
   });
 }
 
+async function getPlayerScheduleUsage(id) {
+  const [matchAssignments, sitOuts] = await Promise.all([
+    prisma.matchAssignment.count({
+      where: { playerId: id },
+    }),
+    prisma.roundSitOut.count({
+      where: {
+        sessionPlayer: {
+          playerId: id,
+        },
+      },
+    }),
+  ]);
+
+  return { matchAssignments, sitOuts };
+}
+
 async function updatePlayer(id, data) {
   return prisma.player.update({
     where: { id },
@@ -37,6 +54,7 @@ module.exports = {
   createPlayer,
   getAllPlayers,
   getPlayerById,
+  getPlayerScheduleUsage,
   updatePlayer,
   deletePlayer,
 };

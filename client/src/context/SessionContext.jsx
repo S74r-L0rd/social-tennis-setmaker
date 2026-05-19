@@ -245,6 +245,18 @@ function getRoundCourts(round) {
   return round.matches.map(match => match.court)
 }
 
+function playerAppearsInScheduledMatch(sessions, playerId) {
+  return sessions.some(session =>
+    (session.rounds ?? []).some(round =>
+      (round.matches ?? []).some(match =>
+        (match.teams ?? []).some(team =>
+          (team ?? []).some(player => player.id === playerId)
+        )
+      )
+    )
+  )
+}
+
 function swapPlayersInRound(round, playerIdA, playerIdB) {
   const newRound = JSON.parse(JSON.stringify(round))
   let posA = null
@@ -624,10 +636,14 @@ function reducer(state, action) {
       }
 
     case 'REMOVE_PLAYER':
-      return updateCurrentSession(state, session => ({
-        ...session,
-        players: session.players.filter(player => player.id !== action.payload),
-      }))
+      return {
+        ...state,
+        playerLibrary: state.playerLibrary.filter(player => player.id !== action.payload),
+        sessions: state.sessions.map(session => ({
+          ...session,
+          players: session.players.filter(player => player.id !== action.payload),
+        })),
+      }
 
     case 'TOGGLE_PLAYER_STATUS':
       return updateCurrentSession(state, session => ({
@@ -1110,17 +1126,36 @@ export function SessionProvider({ children }) {
     dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: playerId })
   }
 
+  async function clearSchedule() {
+    try {
+      if (!state.currentSessionId) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return false
+      }
+
+      await api.clearRounds(state.currentSessionId, token)
+      dispatch({ type: 'CLEAR_SCHEDULE' })
+      return true
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      return false
+    }
+  }
+
   async function removePlayer(playerId) {
     const player = currentSession?.players.find(p => p.id === playerId)
-    if (player?._sessionPlayerId) {
-      try {
-        await api.removePlayerFromSession(player._sessionPlayerId, token)
-      } catch (err) {
-        dispatch({ type: 'SET_ERROR', payload: err.message })
-        return
-      }
+
+    if (playerAppearsInScheduledMatch(state.sessions, playerId)) {
+      dispatch({ type: 'SET_ERROR', payload: 'This player is already scheduled in a match. Clear the schedule before deleting them.' })
+      return
     }
-    dispatch({ type: 'REMOVE_PLAYER', payload: playerId })
+
+    try {
+      await api.deletePlayer(playerId, token)
+      dispatch({ type: 'REMOVE_PLAYER', payload: playerId })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
   }
 
   const actions = {
@@ -1137,7 +1172,7 @@ export function SessionProvider({ children }) {
     generateFirstRound,
     generateRoundFromPlayers,
     confirmAndGenerateNext,
-    clearSchedule: () => dispatch({ type: 'CLEAR_SCHEDULE' }),
+    clearSchedule,
     setBroadcastRound: (roundNumber) => dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber }),
     reshuffleRound,
     undoReshuffleRound: (roundIdx) => dispatch({ type: 'UNDO_RESHUFFLE_ROUND', payload: roundIdx }),

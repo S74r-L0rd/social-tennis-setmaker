@@ -225,6 +225,44 @@ router.get("/session/:sessionId", async (req, res) => {
   }
 });
 
+// DELETE /api/rounds/session/:sessionId
+// Clears all persisted rounds for a session and resets session-player round stats.
+router.delete("/session/:sessionId", requireAuth, async (req, res) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+
+    if (!isValidId(sessionId)) {
+      return res.status(400).json({ success: false, error: "Invalid sessionId." });
+    }
+
+    const session = await getSessionById(sessionId);
+    if (!session) {
+      return res.status(404).json({ success: false, error: "Session not found." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deletedRounds = await tx.round.deleteMany({
+        where: { sessionId },
+      });
+
+      await tx.sessionPlayer.updateMany({
+        where: { sessionId },
+        data: {
+          roundsPlayed: 0,
+          sitOutCount: 0,
+        },
+      });
+
+      return { deletedRounds: deletedRounds.count };
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Clear schedule error:", error);
+    res.status(500).json({ success: false, error: "Failed to clear schedule." });
+  }
+});
+
 // GET /api/rounds/:id
 router.get("/:id", async (req, res) => {
   try {

@@ -21,6 +21,7 @@ export default function SchedulePage() {
   const { state, confirmAndGenerateNext, swapPlayers, clearError, clearSchedule, reshuffleRound, undoReshuffleRound } = useSession()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(() => Math.max(0, state.rounds.length - 1))
+  const [showClearDialog, setShowClearDialog] = useState(false)
 
   useEffect(() => {
     setActiveTab(prev => Math.min(prev, Math.max(0, state.rounds.length - 1)))
@@ -58,10 +59,10 @@ export default function SchedulePage() {
     setActiveTab(prev => Math.min(state.rounds.length - 1, prev + 1))
   }
 
-  function handleClearSchedule() {
-    if (!window.confirm('Clear all generated rounds and start scheduling again?')) return
-    clearSchedule()
-    navigate('/players')
+  async function handleClearSchedule() {
+    setShowClearDialog(false)
+    const didClear = await clearSchedule()
+    if (didClear) navigate('/players')
   }
 
   function handleReshuffleCurrentRound() {
@@ -131,7 +132,7 @@ export default function SchedulePage() {
           </button>
           <button
             type="button"
-            onClick={handleClearSchedule}
+            onClick={() => setShowClearDialog(true)}
             className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:border-red-300 hover:text-red-500 bg-white shadow-sm hover:shadow-md transition-all duration-200 font-bold active:scale-[0.97]"
           >
             Clear Schedule
@@ -203,6 +204,48 @@ export default function SchedulePage() {
           <p className="text-xs text-center text-gray-400 mt-2">
             Results are used to optimise the next matchup
           </p>
+        </div>
+      )}
+
+      {showClearDialog && (
+        <div className="fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-green-950/45 px-4 py-6 backdrop-blur-sm sm:px-6">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="border-b border-red-100 bg-red-50 px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-red-500 shadow-sm">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-black text-green-900 sm:text-xl">Clear schedule?</h2>
+                  <p className="mt-1 text-sm font-bold text-red-500">{state.rounds.length} generated round{state.rounds.length !== 1 ? 's' : ''} will be removed.</p>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-y-auto px-5 py-5 sm:px-6">
+              <p className="text-sm leading-relaxed text-gray-600">
+                This will delete the persisted rounds from the database and reset player round counts and sit-out counts for this session. You can generate a new schedule afterwards.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:px-6">
+              <button
+                type="button"
+                onClick={() => setShowClearDialog(false)}
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearSchedule}
+                className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-red-600"
+              >
+                Clear Schedule
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
