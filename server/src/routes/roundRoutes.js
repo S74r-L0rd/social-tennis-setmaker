@@ -1,6 +1,6 @@
 const express = require("express");
 const prisma = require("../lib/prisma");
-const { generateRound, isEligibleForRound } = require("../algorithm/scheduler");
+const { generateRound } = require("../algorithm/scheduler");
 const { getRoundsBySessionId, getRoundById, updateRound } = require("../repositories/roundRepository");
 const { getSessionById } = require("../repositories/sessionRepository");
 const { getSessionPlayers } = require("../repositories/sessionPlayerRepository");
@@ -14,10 +14,6 @@ function isValidId(value) {
 
 function makePairKey(a, b) {
   return [a, b].sort((x, y) => x - y).join("-");
-}
-
-function isRoundNumberConflict(error) {
-  return error?.code === "P2002" && error?.meta?.modelName === "Round";
 }
 
 // POST /api/rounds/generate
@@ -56,15 +52,6 @@ router.post("/generate", requireAuth, async (req, res) => {
       });
     }
 
-    const eligiblePlayers = activePlayers.filter(isEligibleForRound);
-
-    if (eligiblePlayers.length < 4) {
-      return res.status(400).json({
-        success: false,
-        error: `Not enough eligible players. Need at least 4, have ${eligiblePlayers.length}.`,
-      });
-    }
-
     // Map playerId -> sessionPlayer.id so we can update stats after generation
     const sessionPlayerMap = new Map(activePlayers.map((sp) => [sp.playerId, sp.id]));
 
@@ -72,8 +59,6 @@ router.post("/generate", requireAuth, async (req, res) => {
       id: sp.playerId,
       rating: sp.player.rating,
       sitOutCount: sp.sitOutCount,
-      plannedRounds: sp.plannedRounds,
-      roundsPlayed: sp.roundsPlayed,
     }));
 
     // 3. Fetch available courts (ordered by priority)
@@ -121,33 +106,14 @@ router.post("/generate", requireAuth, async (req, res) => {
       }
     }
 
-    const latestRound = previousRounds[previousRounds.length - 1];
-    if (latestRound && !latestRound.isConfirmed) {
-      return res.status(409).json({
-        success: false,
-        error: "Confirm the current round before generating another round.",
-      });
-    }
+    // 5. Determine the next round number
+    const nextRoundNumber = previousRounds.length + 1;
 
-    // 5. Run the scheduling algorithm
+    // 6. Run the scheduling algorithm
     const result = generateRound(players, courts, history);
 
-    // 6. Save round, matches, assignments, sit-outs and update player stats — all in one transaction
+    // 7. Save round, matches, assignments, sit-outs and update player stats — all in one transaction
     const savedRound = await prisma.$transaction(async (tx) => {
-      const latestRoundInTransaction = await tx.round.findFirst({
-        where: { sessionId },
-        orderBy: { roundNumber: "desc" },
-        select: { roundNumber: true, isConfirmed: true },
-      });
-
-      if (latestRoundInTransaction && !latestRoundInTransaction.isConfirmed) {
-        const error = new Error("Confirm the current round before generating another round.");
-        error.statusCode = 409;
-        throw error;
-      }
-
-      const nextRoundNumber = (latestRoundInTransaction?.roundNumber ?? 0) + 1;
-
       const round = await tx.round.create({
         data: { sessionId, roundNumber: nextRoundNumber },
       });
@@ -238,17 +204,6 @@ router.post("/generate", requireAuth, async (req, res) => {
 
     res.status(201).json({ success: true, data: savedRound });
   } catch (error) {
-    if (error.statusCode) {
-      return res.status(error.statusCode).json({ success: false, error: error.message });
-    }
-
-    if (isRoundNumberConflict(error)) {
-      return res.status(409).json({
-        success: false,
-        error: "A round was already generated for this session. Refresh the schedule and try again.",
-      });
-    }
-
     console.error("Generate round error:", error);
     res.status(500).json({ success: false, error: "Failed to generate round." });
   }

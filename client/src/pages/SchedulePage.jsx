@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { useSession } from '../context/SessionContext'
@@ -21,8 +21,6 @@ export default function SchedulePage() {
   const { state, confirmAndGenerateNext, swapPlayers, clearError, clearSchedule, reshuffleRound, undoReshuffleRound } = useSession()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(() => Math.max(0, state.rounds.length - 1))
-  const [isGeneratingNext, setIsGeneratingNext] = useState(false)
-  const isGeneratingNextRef = useRef(false)
 
   useEffect(() => {
     setActiveTab(prev => Math.min(prev, Math.max(0, state.rounds.length - 1)))
@@ -45,22 +43,11 @@ export default function SchedulePage() {
     swapPlayers(activeTab, Number(active.id), Number(over.id))
   }
 
-  async function handleGenerateNext() {
-    if (sessionScheduleIssue || isGeneratingNextRef.current) return
-
-    isGeneratingNextRef.current = true
-    setIsGeneratingNext(true)
-
-    try {
-      clearError()
-      const didGenerate = await confirmAndGenerateNext()
-      if (didGenerate) {
-        setActiveTab(state.rounds.length)
-      }
-    } finally {
-      isGeneratingNextRef.current = false
-      setIsGeneratingNext(false)
-    }
+  function handleGenerateNext() {
+    if (sessionScheduleIssue) return
+    clearError()
+    confirmAndGenerateNext()
+    setActiveTab(state.rounds.length)
   }
 
   function showPreviousRound() {
@@ -210,9 +197,8 @@ export default function SchedulePage() {
       {isCurrentTab && !currentRound?.isConfirmed && (
         <div className="border-t border-gray-100 pt-4 animate-slide-up">
           <button onClick={handleGenerateNext}
-            disabled={isGeneratingNext}
             className="w-full py-3.5 bg-coral-500 hover:bg-coral-600 text-white font-black rounded-xl transition-all duration-200 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">
-            {isGeneratingNext ? 'Generating...' : 'Confirm & Generate Next Round →'}
+            Confirm & Generate Next Round →
           </button>
           <p className="text-xs text-center text-gray-400 mt-2">
             Results are used to optimise the next matchup

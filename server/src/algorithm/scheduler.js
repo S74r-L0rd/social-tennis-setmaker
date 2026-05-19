@@ -161,35 +161,7 @@ function validateGenerateRoundInput(players, courts, history) {
     ) {
       throw new Error(`Invalid input: player ${player.id} has an invalid sitOutCount.`);
     }
-
-    if (
-      player.plannedRounds !== undefined &&
-      (
-        !Number.isInteger(player.plannedRounds) ||
-        player.plannedRounds < 0
-      )
-    ) {
-      throw new Error(`Invalid input: player ${player.id} has an invalid plannedRounds.`);
-    }
-
-    if (
-      player.roundsPlayed !== undefined &&
-      (
-        !Number.isInteger(player.roundsPlayed) ||
-        player.roundsPlayed < 0
-      )
-    ) {
-      throw new Error(`Invalid input: player ${player.id} has an invalid roundsPlayed.`);
-    }
   }
-}
-
-function isEligibleForRound(player) {
-  if (!Number.isInteger(player.plannedRounds) || player.plannedRounds <= 0) {
-    return true;
-  }
-
-  return Number.isInteger(player.roundsPlayed) && player.roundsPlayed < player.plannedRounds;
 }
 
 /**
@@ -230,22 +202,15 @@ function isEligibleForRound(player) {
 function generateRound(players, courts, history, config = {}) {
   validateGenerateRoundInput(players, courts, history);
 
-  const eligiblePlayers = players.filter(isEligibleForRound);
-
-  if (eligiblePlayers.length < 4) {
-    throw new Error("Invalid input: at least 4 eligible players are required to form a doubles match.");
-  }
-
   // Maximum number of players that can be scheduled this round.
   // Each court supports exactly one doubles match = 4 players.
   const maxPlayers = courts.length * 4;
-  const selectedPlayerCount = Math.floor(Math.min(eligiblePlayers.length, maxPlayers) / 4) * 4;
 
   // Players with fewer sit-outs are lower priority to play this round.
   // Players who have already sat out more often should be given preference.
   // When players have the same sitOutCount, use a random tie-breaker
   // to avoid repeatedly disadvantaging the same player.
-  const sortedPlayers = [...eligiblePlayers].sort((a, b) => {
+  const sortedPlayers = [...players].sort((a, b) => {
     if (b.sitOutCount !== a.sitOutCount) {
       return b.sitOutCount - a.sitOutCount;
     }
@@ -254,10 +219,10 @@ function generateRound(players, courts, history, config = {}) {
   });
 
   // Players within capacity are selected to play this round.
-  const selectedPlayers = sortedPlayers.slice(0, selectedPlayerCount);
+  const selectedPlayers = sortedPlayers.slice(0, maxPlayers);
 
   // Any remaining players must sit out.
-  const sitOuts = sortedPlayers.slice(selectedPlayerCount);
+  const sitOuts = sortedPlayers.slice(maxPlayers);
 
   // Shuffle selected players before grouping so that the same order
   // does not always generate the same match blocks.
@@ -346,5 +311,4 @@ function applyRoundResults(result, history) {
 module.exports = {
   generateRound,
   applyRoundResults,
-  isEligibleForRound,
 };

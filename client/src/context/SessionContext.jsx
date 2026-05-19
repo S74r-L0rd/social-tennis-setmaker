@@ -880,17 +880,14 @@ export function SessionProvider({ children }) {
   }
 
   async function confirmAndGenerateNext() {
-    let didConfirmCurrentRound = false
-
     try {
       if (!currentSession) {
         dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
-        return false
+        return
       }
       const lastRound = currentSession.rounds[currentSession.rounds.length - 1]
       if (lastRound?._dbId && !lastRound.isConfirmed) {
         await api.confirmRound(lastRound._dbId, token)
-        didConfirmCurrentRound = true
       }
       const eligible = getEligiblePlayers(currentSession.players)
       if (eligible.length >= 4) {
@@ -902,17 +899,11 @@ export function SessionProvider({ children }) {
         )
         const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
         dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
-        return true
       } else {
         dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
-        return false
       }
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
-      if (didConfirmCurrentRound) {
-        dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
-      }
-      return false
     }
   }
 
