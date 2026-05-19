@@ -29,7 +29,7 @@ function getOrderedRoundEntries(rounds) {
     .map((entry, index) => ({
       ...entry,
       displayRoundNumber: index + 1,
-      key: `${entry.round._dbId ?? entry.round.roundNumber ?? 'round'}-${entry.originalIndex}`,
+      key: `${entry.round._dbId ?? entry.round.generatedAt ?? entry.round.roundNumber ?? 'round'}-${entry.originalIndex}`,
     }))
 }
 
@@ -44,16 +44,11 @@ export default function SchedulePage() {
   const orderedRoundEntries = getOrderedRoundEntries(state.rounds)
   const roundCount = orderedRoundEntries.length
   const roundKeySignature = orderedRoundEntries.map(entry => entry.key).join('|')
+  const latestRoundKey = orderedRoundEntries[orderedRoundEntries.length - 1]?.key ?? null
 
   useEffect(() => {
-    if (roundCount === 0) {
-      setSelectedRoundKey(null)
-      return
-    }
-
-    if (selectedRoundKey && orderedRoundEntries.some(entry => entry.key === selectedRoundKey)) return
-    setSelectedRoundKey(orderedRoundEntries[orderedRoundEntries.length - 1].key)
-  }, [state.currentSessionId, roundCount, roundKeySignature, selectedRoundKey])
+    setSelectedRoundKey(latestRoundKey)
+  }, [state.currentSessionId, roundKeySignature, latestRoundKey])
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -68,13 +63,16 @@ export default function SchedulePage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
 
-  const selectedRoundIndex = Math.max(0, orderedRoundEntries.findIndex(entry => entry.key === selectedRoundKey))
+  const selectedRoundIndex = Math.min(
+    Math.max(0, orderedRoundEntries.findIndex(entry => entry.key === selectedRoundKey)),
+    Math.max(0, roundCount - 1)
+  )
   const currentRoundIdx = Math.max(0, roundCount - 1)
   const isCurrentTab = selectedRoundIndex === currentRoundIdx
   const currentRoundEntry = orderedRoundEntries[selectedRoundIndex]
   const currentRound = currentRoundEntry?.round
   const currentRoundOriginalIndex = currentRoundEntry?.originalIndex ?? selectedRoundIndex
-  const displayRoundNumber = currentRoundEntry?.displayRoundNumber ?? selectedRoundIndex + 1
+  const displayRoundNumber = roundCount > 0 ? selectedRoundIndex + 1 : 0
   const isRoundEditable = Boolean(currentRound && !currentRound.isConfirmed)
   const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)

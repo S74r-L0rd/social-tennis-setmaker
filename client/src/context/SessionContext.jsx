@@ -723,6 +723,14 @@ function reducer(state, action) {
     case 'GENERATE_ROUND_FROM_PLAYERS_RESULT':
       return updateCurrentSession(state, session => {
         const nextRound = action.payload
+        if (action.freshSchedule) {
+          return {
+            ...session,
+            rounds: [nextRound],
+            selectedBroadcastRoundNumber: nextRound.roundNumber,
+          }
+        }
+
         const existingRounds = session.rounds.map((round, index) =>
           index === session.rounds.length - 1 ? { ...round, isConfirmed: true } : round
         )
@@ -733,6 +741,13 @@ function reducer(state, action) {
           selectedBroadcastRoundNumber: nextRound.roundNumber,
         }
       })
+
+    case 'SET_ROUNDS':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        rounds: action.payload,
+        selectedBroadcastRoundNumber: action.payload[action.payload.length - 1]?.roundNumber ?? null,
+      }))
 
     case 'SET_NEXT_ROUND':
       return updateCurrentSession(state, session => {
@@ -977,9 +992,14 @@ export function SessionProvider({ children }) {
       }
 
       const roundData = await api.generateRound(state.currentSessionId, token)
-      const adaptedRound = adaptBackendRound(roundData)
+      const persistedRounds = await api.getRounds(state.currentSessionId, token)
+      const adaptedRounds = (Array.isArray(persistedRounds) && persistedRounds.length > 0
+        ? persistedRounds
+        : [roundData]
+      ).map(adaptBackendRound)
+      const adaptedRound = adaptedRounds[adaptedRounds.length - 1]
 
-      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+      dispatch({ type: 'SET_ROUNDS', payload: adaptedRounds })
 
       // Update player stats locally from the round result — avoids a full session
       // reload that can overwrite the correctly adapted round with stale data
