@@ -17,18 +17,43 @@ function formatGeneratedAt(value) {
   })
 }
 
+function getOrderedRoundEntries(rounds) {
+  return rounds
+    .map((round, originalIndex) => ({ round, originalIndex }))
+    .sort((a, b) => {
+      const aNumber = Number(a.round.roundNumber ?? 0)
+      const bNumber = Number(b.round.roundNumber ?? 0)
+      if (aNumber !== bNumber) return aNumber - bNumber
+      return a.originalIndex - b.originalIndex
+    })
+    .map((entry, index) => ({
+      ...entry,
+      displayRoundNumber: index + 1,
+      key: `${entry.round._dbId ?? entry.round.roundNumber ?? 'round'}-${entry.originalIndex}`,
+    }))
+}
+
 export default function SchedulePage() {
   const { state, confirmAndGenerateNext, swapPlayers, clearError, clearSchedule, reshuffleRound, undoReshuffleRound } = useSession()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState(() => Math.max(0, state.rounds.length - 1))
+  const [selectedRoundKey, setSelectedRoundKey] = useState(null)
   const [showClearDialog, setShowClearDialog] = useState(false)
   const [isGeneratingNext, setIsGeneratingNext] = useState(false)
   const [currentTime, setCurrentTime] = useState(() => new Date())
 
+  const orderedRoundEntries = getOrderedRoundEntries(state.rounds)
+  const roundCount = orderedRoundEntries.length
+  const roundKeySignature = orderedRoundEntries.map(entry => entry.key).join('|')
+
   useEffect(() => {
-    const maxRoundIdx = Math.max(0, state.rounds.length - 1)
-    setActiveTab(prev => Math.min(Math.max(prev, 0), maxRoundIdx))
-  }, [state.currentSessionId, state.rounds.length])
+    if (roundCount === 0) {
+      setSelectedRoundKey(null)
+      return
+    }
+
+    if (selectedRoundKey && orderedRoundEntries.some(entry => entry.key === selectedRoundKey)) return
+    setSelectedRoundKey(orderedRoundEntries[orderedRoundEntries.length - 1].key)
+  }, [state.currentSessionId, roundCount, roundKeySignature, selectedRoundKey])
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -43,23 +68,24 @@ export default function SchedulePage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
 
-  const currentRoundIdx = Math.max(0, state.rounds.length - 1)
-  const safeActiveTab = state.rounds.length > 0
-    ? Math.min(Math.max(activeTab, 0), state.rounds.length - 1)
-    : 0
-  const isCurrentTab = safeActiveTab === currentRoundIdx
-  const currentRound = state.rounds[safeActiveTab]
+  const selectedRoundIndex = Math.max(0, orderedRoundEntries.findIndex(entry => entry.key === selectedRoundKey))
+  const currentRoundIdx = Math.max(0, roundCount - 1)
+  const isCurrentTab = selectedRoundIndex === currentRoundIdx
+  const currentRoundEntry = orderedRoundEntries[selectedRoundIndex]
+  const currentRound = currentRoundEntry?.round
+  const currentRoundOriginalIndex = currentRoundEntry?.originalIndex ?? selectedRoundIndex
+  const displayRoundNumber = currentRoundEntry?.displayRoundNumber ?? selectedRoundIndex + 1
   const isRoundEditable = Boolean(currentRound && !currentRound.isConfirmed)
   const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)
   const roundStatusLabel = currentRound
-    ? formatRoundStatusLabel(state.session, currentRound.roundNumber, currentTime)
+    ? formatRoundStatusLabel(state.session, displayRoundNumber, currentTime)
     : null
 
   function handleDragEnd({ active, over }) {
     if (!isRoundEditable) return
     if (!over || active.id === over.id) return
-    swapPlayers(safeActiveTab, Number(active.id), Number(over.id))
+    swapPlayers(currentRoundOriginalIndex, Number(active.id), Number(over.id))
   }
 
   async function handleGenerateNext() {
@@ -68,15 +94,17 @@ export default function SchedulePage() {
     setIsGeneratingNext(true)
     const didGenerate = await confirmAndGenerateNext()
     setIsGeneratingNext(false)
-    if (didGenerate) setActiveTab(state.rounds.length)
+    if (didGenerate) setSelectedRoundKey(null)
   }
 
   function showPreviousRound() {
-    setActiveTab(prev => Math.max(0, prev - 1))
+    const previousEntry = orderedRoundEntries[Math.max(0, selectedRoundIndex - 1)]
+    if (previousEntry) setSelectedRoundKey(previousEntry.key)
   }
 
   function showNextRound() {
-    setActiveTab(prev => Math.min(currentRoundIdx, Math.max(0, prev + 1)))
+    const nextEntry = orderedRoundEntries[Math.min(currentRoundIdx, selectedRoundIndex + 1)]
+    if (nextEntry) setSelectedRoundKey(nextEntry.key)
   }
 
   async function handleClearSchedule() {
@@ -87,15 +115,15 @@ export default function SchedulePage() {
 
   function handleReshuffleCurrentRound() {
     if (!isRoundEditable || sessionScheduleIssue) return
-    reshuffleRound(safeActiveTab)
+    reshuffleRound(currentRoundOriginalIndex)
   }
 
   function handleUndoReshuffle() {
     if (!currentRound?.reshuffleUndoSnapshot) return
-    undoReshuffleRound(safeActiveTab)
+    undoReshuffleRound(currentRoundOriginalIndex)
   }
 
-  if (state.rounds.length === 0) {
+  if (roundCount === 0) {
     return (
       <div className="max-w-5xl mx-auto flex flex-col items-center justify-center py-24 text-center gap-4 animate-fade-in">
         <div className="text-4xl">📋</div>
@@ -132,7 +160,7 @@ export default function SchedulePage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between animate-slide-up">
         <div>
           <h1 className="text-3xl font-black text-green-900">Schedule</h1>
-          <p className="text-base text-gray-400 mt-0.5">{state.session?.name} · {state.rounds.length} round{state.rounds.length !== 1 ? 's' : ''}</p>
+          <p className="text-base text-gray-400 mt-0.5">{state.session?.name} · {roundCount} round{roundCount !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <button
@@ -176,7 +204,7 @@ export default function SchedulePage() {
         <button
           type="button"
           onClick={showPreviousRound}
-          disabled={safeActiveTab <= 0}
+          disabled={selectedRoundIndex <= 0}
           className="inline-flex items-center px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:border-gray-300 transition-all"
         >
           ← Previous Round
@@ -184,7 +212,7 @@ export default function SchedulePage() {
 
         <div className="text-center">
           <p className="text-sm font-black text-green-900">
-            Round {safeActiveTab + 1} of {state.rounds.length}
+            Round {displayRoundNumber} of {roundCount}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             {generatedAtLabel ? `Generated ${generatedAtLabel}` : 'Generation time unavailable'}
@@ -194,7 +222,7 @@ export default function SchedulePage() {
         <button
           type="button"
           onClick={showNextRound}
-          disabled={safeActiveTab >= currentRoundIdx}
+          disabled={selectedRoundIndex >= currentRoundIdx}
           className="inline-flex items-center px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:border-gray-300 transition-all"
         >
           Next Round →
@@ -212,7 +240,7 @@ export default function SchedulePage() {
 
       {currentRound && (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <RoundPanel round={currentRound} isEditable={isRoundEditable} roundStatusLabel={roundStatusLabel} />
+          <RoundPanel key={currentRoundEntry.key} round={currentRound} isEditable={isRoundEditable} roundStatusLabel={roundStatusLabel} />
         </DndContext>
       )}
 
@@ -242,7 +270,7 @@ export default function SchedulePage() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-lg font-black text-green-900 sm:text-xl">Clear schedule?</h2>
-                  <p className="mt-1 text-sm font-bold text-red-500">{state.rounds.length} generated round{state.rounds.length !== 1 ? 's' : ''} will be removed.</p>
+                  <p className="mt-1 text-sm font-bold text-red-500">{roundCount} generated round{roundCount !== 1 ? 's' : ''} will be removed.</p>
                 </div>
               </div>
             </div>
