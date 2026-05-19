@@ -96,6 +96,7 @@ export default function BroadcastPage() {
   const [selectedRoundKey, setSelectedRoundKey] = useState(null)
   const [selectedSessionState, setSelectedSessionState] = useState('all')
   const [currentTime, setCurrentTime] = useState(() => new Date())
+  const [broadcastPendingAction, setBroadcastPendingAction] = useState(null)
   const broadcastUrl = window.location.origin + '/broadcast'
   const roundEntries = getOrderedRoundEntries(state.rounds)
 
@@ -155,6 +156,27 @@ export default function BroadcastPage() {
     setSelectedSessionState(sessionState)
   }
 
+  async function handleToggleBroadcast() {
+    const nextAction = state.isBroadcasting ? 'stopping' : 'starting'
+    setBroadcastPendingAction(nextAction)
+    try {
+      await toggleBroadcast()
+    } finally {
+      setBroadcastPendingAction(null)
+    }
+  }
+
+  if (broadcastPendingAction) {
+    return (
+      <LoadingScreen
+        message={broadcastPendingAction === 'starting' ? 'Starting broadcast' : 'Stopping broadcast'}
+        detail={broadcastPendingAction === 'starting'
+          ? 'Saving broadcast settings so players can view the schedule.'
+          : 'Turning off the live broadcast for this session.'}
+      />
+    )
+  }
+
   if (state.isLoading || !state.hasLoaded) {
     return (
       <LoadingScreen
@@ -177,7 +199,7 @@ export default function BroadcastPage() {
             {state.error}
           </div>
         )}
-        <button onClick={toggleBroadcast}
+        <button onClick={handleToggleBroadcast}
           className="px-8 py-3.5 bg-coral-500 hover:bg-coral-600 text-white rounded-xl font-black text-sm transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]">
           Start Broadcasting
         </button>
@@ -195,7 +217,7 @@ export default function BroadcastPage() {
             <p className="text-sm text-gray-400 break-words sm:text-base">{state.session?.name}</p>
           </div>
         </div>
-        <button onClick={toggleBroadcast}
+        <button onClick={handleToggleBroadcast}
           className="text-xs px-4 py-2 border border-gray-200 rounded-full text-gray-500 hover:border-red-300 hover:text-red-500 transition-all duration-200 font-bold">
           Stop
         </button>
