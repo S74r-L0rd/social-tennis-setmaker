@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { SessionProvider } from './context/SessionContext'
 import { useSession } from './context/SessionContext'
 import { AuthProvider } from './context/AuthContext'
@@ -23,35 +23,47 @@ function ProtectedRoute({ children }) {
 }
 
 function SiteFooter() {
+  const navigate = useNavigate()
+
   return (
-    <footer className="bg-green-900 px-8 pt-10 pb-6">
-      <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-[1.4fr_auto] gap-10 items-start">
-        <div className="flex flex-col gap-3">
-          <h3 className="text-lg font-black text-white">Contact us</h3>
-          <p className="text-sm text-green-100 leading-relaxed max-w-md">
-            We would like to hear your feedback on Social Tennis Setmaker.
-            If you have suggestions or hit any issues, send us a note.
-          </p>
-          <a
-            href="mailto:UWA_group07@setmaker.com"
-            className="text-sm font-black text-coral-300 hover:text-coral-200 transition-colors"
-          >
-            UWA_group07@setmaker.com
-          </a>
+    <footer className="bg-green-900 px-5 py-8 sm:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-[1fr_auto] md:items-start">
+          <div className="max-w-md">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="inline-flex items-center gap-1 text-left"
+            >
+              <span className="text-xl leading-none" aria-hidden="true">🎾</span>
+              <span className="text-lg font-black text-white">SetMaker</span>
+            </button>
+            <p className="mt-3 text-sm leading-relaxed text-green-100">
+              A practical social tennis scheduler for organising balanced rounds, sit-outs, and live broadcasts.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 md:items-end md:text-right">
+            <p className="text-sm font-black text-white">Feedback</p>
+            <p className="max-w-xs text-sm leading-relaxed text-green-100 md:max-w-64">
+              Found an issue or have a suggestion? Let the team know.
+            </p>
+            <a
+              href="mailto:UWA_group07@setmaker.com?subject=SetMaker%20Feedback"
+              className="inline-flex w-fit items-center justify-center rounded-lg border border-white/20 px-4 py-2.5 text-xs font-black text-green-100 transition-all hover:bg-white/10 hover:text-white md:self-end"
+            >
+              Give feedback
+            </a>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-6 md:items-end md:text-right">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-bold text-white">© 2026 Social Tennis Setmaker</p>
-            <p className="text-sm text-green-100">Developed for CITS5206 Project</p>
-            <p className="text-sm text-green-100">Made in Perth, Australia</p>
+        <div className="flex flex-col gap-3 border-t border-white/10 pt-5 text-sm text-green-100 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-bold text-white">© 2026 Social Tennis Setmaker</p>
+          <div className="flex flex-col gap-2 text-green-100 sm:flex-row sm:items-center sm:gap-4">
+            <span>Developed for CITS5206 Project</span>
+            <span className="hidden text-green-200 sm:inline">•</span>
+            <span>Made in Perth, Australia</span>
           </div>
-          <a
-            href="mailto:UWA_group07@setmaker.com?subject=SetMaker%20Feedback"
-            className="inline-flex w-fit items-center justify-center rounded-xl border border-green-100 px-5 py-3 text-sm font-black text-green-100 hover:bg-white/10 transition-all duration-200"
-          >
-            Give feedback
-          </a>
         </div>
       </div>
     </footer>
