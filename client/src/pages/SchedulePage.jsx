@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { DndContext, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { useSession } from '../context/SessionContext'
@@ -38,6 +39,7 @@ export default function SchedulePage() {
   const navigate = useNavigate()
   const [selectedRoundKey, setSelectedRoundKey] = useState(null)
   const [showClearDialog, setShowClearDialog] = useState(false)
+  const [scheduleWarning, setScheduleWarning] = useState(null)
   const [isGeneratingNext, setIsGeneratingNext] = useState(false)
   const [currentTime, setCurrentTime] = useState(() => new Date())
 
@@ -57,6 +59,10 @@ export default function SchedulePage() {
 
     return () => window.clearInterval(intervalId)
   }, [])
+
+  useEffect(() => {
+    if (state.error) setScheduleWarning(state.error)
+  }, [state.error])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -120,6 +126,34 @@ export default function SchedulePage() {
     if (!currentRound?.reshuffleUndoSnapshot) return
     undoReshuffleRound(currentRoundOriginalIndex)
   }
+
+  function closeScheduleWarning() {
+    setScheduleWarning(null)
+    clearError()
+  }
+
+  const scheduleWarningElement = scheduleWarning ? (
+    <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center bg-green-950/45 px-4 py-6 backdrop-blur-sm sm:px-6">
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
+        <div className="border-b border-amber-100 bg-amber-50 px-5 py-4 sm:px-6">
+          <h2 className="text-lg font-black text-green-900 sm:text-xl">Schedule change blocked</h2>
+          <p className="mt-1 text-sm font-bold text-amber-600">Check the selected session format</p>
+        </div>
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          <p className="text-sm leading-relaxed text-gray-600">{scheduleWarning}</p>
+        </div>
+        <div className="flex border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={closeScheduleWarning}
+            className="w-full rounded-xl bg-coral-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-coral-600"
+          >
+            Review Round
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
 
   if (roundCount === 0) {
     return (
@@ -192,7 +226,7 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {state.error && (
+      {state.error && !scheduleWarning && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600 animate-scale-in">
           {state.error}
         </div>
@@ -296,6 +330,7 @@ export default function SchedulePage() {
           </div>
         </div>
       )}
+      {scheduleWarningElement ? createPortal(scheduleWarningElement, document.body) : null}
     </div>
   )
 }

@@ -75,6 +75,89 @@ function getRoundTimingState(session, roundNumber, now = new Date()) {
   return "in_progress";
 }
 
+function normaliseGender(gender) {
+  const value = String(gender || "").trim().toLowerCase();
+  if (value === "m" || value === "male" || value === "man" || value === "men") return "male";
+  if (value === "f" || value === "female" || value === "woman" || value === "women") return "female";
+  return null;
+}
+
+function isMixedTeam(players) {
+  const genders = players.map((player) => normaliseGender(player?.gender));
+  return genders.includes("male") && genders.includes("female");
+}
+
+function getRoundFormatIssue(round, gameMode) {
+  if (!["mixed", "same_gender"].includes(gameMode)) return null;
+
+  for (const match of round.matches ?? []) {
+    const team1 = (match.assignments ?? [])
+      .filter((assignment) => assignment.teamNumber === 1)
+      .sort((a, b) => a.positionInTeam - b.positionInTeam)
+      .map((assignment) => assignment.player);
+    const team2 = (match.assignments ?? [])
+      .filter((assignment) => assignment.teamNumber === 2)
+      .sort((a, b) => a.positionInTeam - b.positionInTeam)
+      .map((assignment) => assignment.player);
+
+    if (team1.length !== 2 || team2.length !== 2) {
+      return "Each doubles match must have two complete teams before it can be confirmed.";
+    }
+
+    if (gameMode === "mixed" && (!isMixedTeam(team1) || !isMixedTeam(team2))) {
+      return "This round cannot be saved because the selected format is Mixed Doubles. Each team must have one male player and one female player.";
+    }
+
+    if (gameMode === "same_gender") {
+      const matchGenders = [...team1, ...team2].map((player) => normaliseGender(player?.gender));
+      if (!matchGenders[0] || matchGenders.some((gender) => gender !== matchGenders[0])) {
+        return "This round cannot be saved because the selected format is Same Gender Doubles. A match must be M+M vs M+M or F+F vs F+F.";
+      }
+    }
+  }
+
+  return null;
+}
+
+function cloneRoundWithProposedSwap(round, positionA, positionB) {
+  const nextRound = {
+    ...round,
+    matches: (round.matches ?? []).map((match) => ({
+      ...match,
+      assignments: (match.assignments ?? []).map((assignment) => ({
+        ...assignment,
+        player: { ...assignment.player },
+      })),
+    })),
+  };
+
+  function getSwappablePlayer(position) {
+    if (position.type === "match") return position.assignment.player;
+    return position.sessionPlayer.player;
+  }
+
+  function replaceMatchAssignment(playerIdToReplace, replacementPlayer) {
+    for (const match of nextRound.matches) {
+      for (const assignment of match.assignments ?? []) {
+        if (assignment.playerId === playerIdToReplace) {
+          assignment.playerId = replacementPlayer.id;
+          assignment.player = { ...replacementPlayer };
+          return;
+        }
+      }
+    }
+  }
+
+  if (positionA.type === "match") {
+    replaceMatchAssignment(positionA.assignment.playerId, getSwappablePlayer(positionB));
+  }
+  if (positionB.type === "match") {
+    replaceMatchAssignment(positionB.assignment.playerId, getSwappablePlayer(positionA));
+  }
+
+  return nextRound;
+}
+
 // POST /api/rounds/generate
 // Generates a round from DB state and saves the result back to DB
 router.post("/generate", requireAuth, async (req, res) => {
@@ -320,6 +403,12 @@ router.patch("/:id/swap", requireAuth, async (req, res) => {
       });
     }
 
+    const proposedRound = cloneRoundWithProposedSwap(existing, positionA, positionB);
+    const formatIssue = getRoundFormatIssue(proposedRound, existing.session?.gameMode);
+    if (formatIssue) {
+      return res.status(400).json({ success: false, error: formatIssue });
+    }
+
     const savedRound = await prisma.$transaction(async (tx) => {
       if (positionA.type === "match" && positionB.type === "match") {
         await tx.matchAssignment.deleteMany({
@@ -539,6 +628,11 @@ router.post("/:id/confirm", requireAuth, async (req, res) => {
 
     if (existing.isConfirmed) {
       return res.status(400).json({ success: false, error: "Round is already confirmed." });
+    }
+
+    const formatIssue = getRoundFormatIssue(existing, existing.session?.gameMode);
+    if (formatIssue) {
+      return res.status(400).json({ success: false, error: formatIssue });
     }
 
     const round = await updateRound(id, { isConfirmed: true });
