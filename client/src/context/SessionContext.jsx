@@ -1030,7 +1030,8 @@ export function SessionProvider({ children }) {
       const result = await generateSchedule(
         getRoundPlayerPool(round),
         getRoundCourts(round),
-        cloneHistory(round.historySnapshot ?? currentSession.history)
+        cloneHistory(round.historySnapshot ?? currentSession.history),
+        token
       )
       dispatch({ type: 'RESHUFFLE_ROUND_RESULT', payload: { roundIdx, result } })
     } catch (error) {
