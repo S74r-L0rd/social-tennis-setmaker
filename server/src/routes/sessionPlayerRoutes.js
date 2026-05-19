@@ -6,6 +6,8 @@ const {
   updateSessionPlayer,
   removeSessionPlayer,
 } = require("../repositories/sessionPlayerRepository");
+const { getSessionById } = require("../repositories/sessionRepository");
+const { getPlayerById } = require("../repositories/playerRepository");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
@@ -63,6 +65,22 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found.",
+      });
+    }
+
+    const player = await getPlayerById(playerId, req.user.userId);
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        error: "Player not found.",
+      });
+    }
+
     const sessionPlayer = await addPlayerToSession(req.body);
 
     res.status(201).json({
@@ -84,7 +102,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:sessionId", async (req, res) => {
+router.get("/:sessionId", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.sessionId);
 
@@ -92,6 +110,14 @@ router.get("/:sessionId", async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Invalid session id.",
+      });
+    }
+
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found.",
       });
     }
 
@@ -123,6 +149,13 @@ router.put("/:id", requireAuth, async (req, res) => {
     const existingSessionPlayer = await getSessionPlayerById(sessionPlayerId);
 
     if (!existingSessionPlayer) {
+      return res.status(404).json({
+        success: false,
+        error: "Session player not found.",
+      });
+    }
+
+    if (existingSessionPlayer.session?.createdById !== req.user.userId) {
       return res.status(404).json({
         success: false,
         error: "Session player not found.",
@@ -197,6 +230,13 @@ router.delete("/:id", requireAuth, async (req, res) => {
     const existingSessionPlayer = await getSessionPlayerById(sessionPlayerId);
 
     if (!existingSessionPlayer) {
+      return res.status(404).json({
+        success: false,
+        error: "Session player not found.",
+      });
+    }
+
+    if (existingSessionPlayer.session?.createdById !== req.user.userId) {
       return res.status(404).json({
         success: false,
         error: "Session player not found.",

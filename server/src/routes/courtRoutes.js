@@ -26,7 +26,7 @@ router.post("/session/:sessionId", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid sessionId." });
     }
 
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, req.user.userId);
     if (!session) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -59,12 +59,17 @@ router.post("/session/:sessionId", requireAuth, async (req, res) => {
 
 // GET /api/courts/session/:sessionId
 // Get all courts for a session, ordered by priority then court number
-router.get("/session/:sessionId", async (req, res) => {
+router.get("/session/:sessionId", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.sessionId);
 
     if (!isValidId(sessionId)) {
       return res.status(400).json({ success: false, error: "Invalid sessionId." });
+    }
+
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({ success: false, error: "Session not found." });
     }
 
     const courts = await getCourtsBySessionId(sessionId);
@@ -85,7 +90,7 @@ router.post("/session/:sessionId/bulk", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid sessionId." });
     }
 
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, req.user.userId);
     if (!session) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -132,6 +137,9 @@ router.put("/:id", requireAuth, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ success: false, error: "Court not found." });
     }
+    if (existing.session?.createdById !== req.user.userId) {
+      return res.status(404).json({ success: false, error: "Court not found." });
+    }
 
     const { courtName, isAvailable, priorityOrder } = req.body;
 
@@ -159,6 +167,9 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     const existing = await getCourtById(id);
     if (!existing) {
+      return res.status(404).json({ success: false, error: "Court not found." });
+    }
+    if (existing.session?.createdById !== req.user.userId) {
       return res.status(404).json({ success: false, error: "Court not found." });
     }
 

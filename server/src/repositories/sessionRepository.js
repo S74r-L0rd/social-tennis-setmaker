@@ -41,15 +41,19 @@ const sessionInclude = {
   },
 };
 
-async function createSession(data) {
+async function createSession(data, userId) {
   return prisma.session.create({
-    data,
+    data: {
+      ...data,
+      createdById: userId,
+    },
     include: sessionInclude,
   });
 }
 
-async function getAllSessions() {
+async function getAllSessions(userId) {
   return prisma.session.findMany({
+    where: { createdById: userId },
     orderBy: {
       createdAt: "desc",
     },
@@ -57,10 +61,13 @@ async function getAllSessions() {
   });
 }
 
-async function getSessionById(id) {
+async function getSessionById(id, userId) {
   return prisma.session.findUnique({
     where: { id },
     include: sessionInclude,
+  }).then((session) => {
+    if (!session || session.createdById !== userId) return null;
+    return session;
   });
 }
 

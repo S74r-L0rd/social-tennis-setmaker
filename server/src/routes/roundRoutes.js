@@ -86,7 +86,7 @@ router.post("/generate", requireAuth, async (req, res) => {
     }
 
     // 1. Verify session exists and is ACTIVE
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, req.user.userId);
     if (!session) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -297,6 +297,9 @@ router.patch("/:id/swap", requireAuth, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ success: false, error: "Round not found." });
     }
+    if (existing.session?.createdById !== req.user.userId) {
+      return res.status(404).json({ success: false, error: "Round not found." });
+    }
 
     const timingState = getRoundTimingState(existing.session, existing.roundNumber);
     if (timingState !== "upcoming") {
@@ -425,12 +428,17 @@ router.patch("/:id/swap", requireAuth, async (req, res) => {
 });
 
 // GET /api/rounds/session/:sessionId
-router.get("/session/:sessionId", async (req, res) => {
+router.get("/session/:sessionId", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.sessionId);
 
     if (!isValidId(sessionId)) {
       return res.status(400).json({ success: false, error: "Invalid sessionId." });
+    }
+
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({ success: false, error: "Session not found." });
     }
 
     const rounds = await getRoundsBySessionId(sessionId);
@@ -450,7 +458,7 @@ router.delete("/session/:sessionId", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid sessionId." });
     }
 
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, req.user.userId);
     if (!session) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -487,7 +495,7 @@ router.delete("/session/:sessionId", requireAuth, async (req, res) => {
 });
 
 // GET /api/rounds/:id
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
 
@@ -498,6 +506,9 @@ router.get("/:id", async (req, res) => {
     const round = await getRoundById(id);
 
     if (!round) {
+      return res.status(404).json({ success: false, error: "Round not found." });
+    }
+    if (round.session?.createdById !== req.user.userId) {
       return res.status(404).json({ success: false, error: "Round not found." });
     }
 
@@ -519,6 +530,9 @@ router.post("/:id/confirm", requireAuth, async (req, res) => {
     const existing = await getRoundById(id);
 
     if (!existing) {
+      return res.status(404).json({ success: false, error: "Round not found." });
+    }
+    if (existing.session?.createdById !== req.user.userId) {
       return res.status(404).json({ success: false, error: "Round not found." });
     }
 
