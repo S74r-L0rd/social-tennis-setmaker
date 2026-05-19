@@ -1,6 +1,6 @@
 const express = require("express");
 const prisma = require("../lib/prisma");
-const { generateRound } = require("../algorithm/scheduler");
+const { generateRound, isEligibleForRound } = require("../algorithm/scheduler");
 const { getRoundsBySessionId, getRoundById, updateRound } = require("../repositories/roundRepository");
 const { getSessionById } = require("../repositories/sessionRepository");
 const { getSessionPlayers } = require("../repositories/sessionPlayerRepository");
@@ -52,6 +52,15 @@ router.post("/generate", requireAuth, async (req, res) => {
       });
     }
 
+    const eligiblePlayers = activePlayers.filter(isEligibleForRound);
+
+    if (eligiblePlayers.length < 4) {
+      return res.status(400).json({
+        success: false,
+        error: `Not enough eligible players. Need at least 4, have ${eligiblePlayers.length}.`,
+      });
+    }
+
     // Map playerId -> sessionPlayer.id so we can update stats after generation
     const sessionPlayerMap = new Map(activePlayers.map((sp) => [sp.playerId, sp.id]));
 
@@ -59,6 +68,8 @@ router.post("/generate", requireAuth, async (req, res) => {
       id: sp.playerId,
       rating: sp.player.rating,
       sitOutCount: sp.sitOutCount,
+      plannedRounds: sp.plannedRounds,
+      roundsPlayed: sp.roundsPlayed,
     }));
 
     // 3. Fetch available courts (ordered by priority)
