@@ -147,6 +147,7 @@ export default function SetupPage() {
   const [isSessionPickerOpen, setIsSessionPickerOpen] = useState(false)
   const [isCourtPickerOpen, setIsCourtPickerOpen] = useState(false)
   const [editingSessionId, setEditingSessionId] = useState(null)
+  const [sessionDeleteDialog, setSessionDeleteDialog] = useState(null)
 
   function validate() {
     const e = {}
@@ -242,6 +243,12 @@ export default function SetupPage() {
 
   function clearAllCourts() {
     setForm(prev => ({ ...prev, selectedCourts: [] }))
+  }
+
+  async function confirmDeleteSession() {
+    if (!sessionDeleteDialog) return
+    await deleteSession(sessionDeleteDialog.id)
+    setSessionDeleteDialog(null)
   }
 
   const selectedCourtLabels = form.selectedCourts.length > 0
@@ -683,9 +690,7 @@ export default function SetupPage() {
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                if (window.confirm('Delete this session from history?')) {
-                                  deleteSession(sessionRecord.id)
-                                }
+                                setSessionDeleteDialog(sessionRecord)
                               }}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
                               aria-label={`Delete ${sessionRecord.session?.name || 'session'}`}
@@ -731,6 +736,49 @@ export default function SetupPage() {
           </div>
         </aside>
       </div>
+      {sessionDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex min-h-screen items-center justify-center bg-green-950/45 px-4 py-6 backdrop-blur-sm sm:px-6">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="border-b border-red-100 bg-red-50 px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-red-500 shadow-sm">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-black text-green-900 sm:text-xl">Delete session?</h2>
+                  <p className="mt-1 text-sm font-bold text-red-500">
+                    {sessionDeleteDialog.session?.name || 'Untitled Session'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-y-auto px-5 py-5 sm:px-6">
+              <p className="text-sm leading-relaxed text-gray-600">
+                This will permanently delete the session from the database, including its courts, players in the session, generated rounds, matches, and sit-out records. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:px-6">
+              <button
+                type="button"
+                onClick={() => setSessionDeleteDialog(null)}
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSession}
+                className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-red-600"
+              >
+                Delete Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
