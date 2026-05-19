@@ -11,13 +11,12 @@ const SESSION_STATES = [
   { key: 'completed', label: 'Completed Session' },
 ]
 
-function getRoundSessionState(sessionConfig, round) {
+function getRoundSessionState(sessionConfig, round, now = new Date()) {
   if (!round) return null
 
   const roundStartDate = getRoundStartDate(sessionConfig, round.roundNumber)
   if (!roundStartDate) return null
 
-  const now = new Date()
   const matchDurationMinutes = Number(sessionConfig?.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES)
   const roundEndDate = new Date(roundStartDate.getTime() + matchDurationMinutes * 60 * 1000)
 
@@ -99,7 +98,16 @@ export default function BroadcastPage() {
   const [showRatings, setShowRatings] = useState(true)
   const [selectedRoundNumber, setSelectedRoundNumber] = useState(null)
   const [selectedSessionState, setSelectedSessionState] = useState('all')
+  const [currentTime, setCurrentTime] = useState(() => new Date())
   const broadcastUrl = window.location.origin + '/broadcast'
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(new Date())
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   useEffect(() => {
     if (state.rounds.length === 0) {
@@ -122,7 +130,7 @@ export default function BroadcastPage() {
 
   const roundsWithState = state.rounds.map(round => ({
     ...round,
-    sessionState: getRoundSessionState(state.session, round),
+    sessionState: getRoundSessionState(state.session, round, currentTime),
   }))
 
   const visibleRounds = selectedSessionState === 'all'
