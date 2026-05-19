@@ -858,7 +858,7 @@ function reducer(state, action) {
       return { ...state, error: null }
 
     case 'RESET':
-      return initialState
+      return { ...initialState, hasLoaded: true }
 
     case 'UPDATE_SESSIONS':
       return { ...state, sessions: action.payload }

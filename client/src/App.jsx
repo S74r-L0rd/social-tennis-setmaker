@@ -17,9 +17,56 @@ import ProfilePage from './pages/ProfilePage'
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth()
   const { state } = useSession()
-  if (!isAuthenticated) return <Navigate to="/auth" replace />
+  if (!isAuthenticated) return <AccessPrompt />
   if (state.isLoading || !state.hasLoaded) return <LoadingScreen />
   return children
+}
+
+function AccessPrompt() {
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto flex min-h-[58vh] max-w-4xl items-center justify-center px-2 py-10 animate-fade-in">
+      <div className="w-full overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.2fr]">
+          <div className="bg-green-900 px-6 py-8 text-white sm:px-8">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl" aria-hidden="true">
+              🎾
+            </div>
+            <h1 className="mt-5 text-3xl font-black leading-tight sm:text-4xl">Login required</h1>
+            <p className="mt-3 text-sm leading-relaxed text-green-100">
+              Sign in or create an organiser account to manage sessions, players, schedules, broadcasts, and fairness analysis.
+            </p>
+          </div>
+
+          <div className="flex flex-col justify-center px-6 py-8 sm:px-8">
+            <p className="text-xs font-black uppercase tracking-widest text-coral-500">Protected area</p>
+            <h2 className="mt-2 text-2xl font-black text-green-900">Access more SetMaker tools</h2>
+            <p className="mt-3 text-sm leading-relaxed text-gray-500">
+              Your club data is saved to your account, so you need to log in before viewing or changing private session information.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => navigate('/auth?mode=login')}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-coral-500 px-5 py-3 text-sm font-black text-white shadow-sm transition-all hover:bg-coral-600 sm:w-auto"
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/auth?mode=signup')}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-black text-gray-600 transition-all hover:border-coral-200 hover:bg-coral-50 hover:text-coral-700 sm:w-auto"
+              >
+                Sign up
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function SiteFooter() {
@@ -81,6 +128,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/auth" element={<AuthPage />} />
+              <Route path="/access-required" element={<AccessPrompt />} />
               <Route path="/fairness-analysis" element={<ProtectedRoute><FairnessAnalysisPage /></ProtectedRoute>} />
               <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
               <Route path="/players" element={<ProtectedRoute><PlayersPage /></ProtectedRoute>} />
