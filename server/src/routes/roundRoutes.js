@@ -79,7 +79,10 @@ router.post("/generate", requireAuth, async (req, res) => {
     // 2. Fetch active players for this session
     const sessionPlayers = await getSessionPlayers(sessionId);
     const activePlayers = sessionPlayers.filter(
-      (sp) => sp.status === "ACTIVE" && sp.leftAt === null
+      (sp) =>
+        sp.status === "ACTIVE" &&
+        sp.leftAt === null &&
+        sp.roundsPlayed < sp.plannedRounds
     );
 
     if (activePlayers.length < 4) {

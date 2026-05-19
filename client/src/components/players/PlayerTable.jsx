@@ -106,10 +106,10 @@ export default function PlayerTable({ players = null, onEditPlayer, editingPlaye
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {visiblePlayers.map((player, idx) => {
           const usage = getPlayerRoundUsage(state.rounds, player.id)
-          const { scheduledRoundCount } = usage
+          const { matchedRoundCount } = usage
           const quotaReached = Number.isInteger(player.plannedRounds)
             && player.plannedRounds > 0
-            && scheduledRoundCount >= player.plannedRounds
+            && matchedRoundCount >= player.plannedRounds
 
           return (
             <div key={player.id} className={idx !== 0 ? 'border-t border-gray-50' : ''}>
@@ -130,7 +130,7 @@ export default function PlayerTable({ players = null, onEditPlayer, editingPlaye
                 </div>
 
                 <span className="text-sm text-gray-400 hidden sm:block flex-shrink-0">
-                  {scheduledRoundCount}R · {player.sitOutCount} out
+                  {matchedRoundCount}R · {player.sitOutCount} out
                   {player.plannedRounds > 0 && ` · /${player.plannedRounds}`}
                 </span>
 
