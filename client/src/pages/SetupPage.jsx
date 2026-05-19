@@ -33,6 +33,11 @@ const MATCH_DURATION_OPTIONS = [
   { value: 105, label: '105 minutes' },
   { value: 120, label: '120 minutes' },
 ]
+const SESSION_TIME_RANGES = {
+  morning: { start: 4 * 60, end: 11 * 60 + 45, fallback: '09:00' },
+  afternoon: { start: 12 * 60, end: 16 * 60 + 45, fallback: '13:00' },
+  evening: { start: 17 * 60, end: 23 * 60 + 45, fallback: '18:00' },
+}
 
 function getTodayDateValue() {
   const now = new Date()
@@ -53,11 +58,69 @@ function getDefaultStartDateTimeValue() {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
+function getTimeValueFromDateTime(value) {
+  if (typeof value !== 'string') return '09:00'
+  const match = value.match(/T(\d{2}:\d{2})/)
+  return match?.[1] ?? '09:00'
+}
+
+function getMinutesFromTimeValue(value) {
+  const match = typeof value === 'string' ? value.match(/^(\d{2}):(\d{2})$/) : null
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function getTimeValueFromMinutes(minutes) {
+  const hours = String(Math.floor(minutes / 60)).padStart(2, '0')
+  const mins = String(minutes % 60).padStart(2, '0')
+  return `${hours}:${mins}`
+}
+
+function formatTimeOptionLabel(value) {
+  const [hours, minutes] = value.split(':').map(Number)
+  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString('en-AU', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function getTimeOptionsForPeriod(periodValue) {
+  const range = SESSION_TIME_RANGES[periodValue] ?? SESSION_TIME_RANGES.morning
+  const options = []
+  for (let minutes = range.start; minutes <= range.end; minutes += 15) {
+    const value = getTimeValueFromMinutes(minutes)
+    options.push({ value, label: formatTimeOptionLabel(value) })
+  }
+  return options
+}
+
+function isTimeInSessionPeriod(timeValue, periodValue) {
+  const minutes = getMinutesFromTimeValue(timeValue)
+  const range = SESSION_TIME_RANGES[periodValue]
+  return minutes != null && range && minutes >= range.start && minutes <= range.end
+}
+
+function getDefaultTimeForPeriod(periodValue) {
+  return SESSION_TIME_RANGES[periodValue]?.fallback ?? SESSION_TIME_RANGES.morning.fallback
+}
+
+function normaliseTimeForPeriod(timeValue, periodValue) {
+  return isTimeInSessionPeriod(timeValue, periodValue)
+    ? timeValue
+    : getDefaultTimeForPeriod(periodValue)
+}
+
+function combineDateAndTime(dateValue, timeValue) {
+  const date = dateValue || getTodayDateValue()
+  const time = timeValue || '09:00'
+  return `${date}T${time}`
+}
+
 function getDefaultFormState() {
   return {
     sessionDate: getTodayDateValue(),
     sessionPeriod: 'morning',
-    startDateTime: getDefaultStartDateTimeValue(),
+    startDateTime: combineDateAndTime(getTodayDateValue(), getDefaultTimeForPeriod('morning')),
     matchDurationMinutes: 90,
     breakIntervalMinutes: 10,
     selectedCourts: ['Court 1'],
@@ -115,10 +178,16 @@ function getSessionDateFromRecord(sessionConfig) {
 }
 
 function createFormStateFromSession(sessionConfig) {
+  const sessionDate = getSessionDateFromRecord(sessionConfig)
+  const sessionPeriod = getSessionPeriodFromRecord(sessionConfig)
+  const startTime = normaliseTimeForPeriod(
+    getTimeValueFromDateTime(sessionConfig?.startDateTime ?? getDefaultStartDateTimeValue()),
+    sessionPeriod
+  )
   return {
-    sessionDate: getSessionDateFromRecord(sessionConfig),
-    sessionPeriod: getSessionPeriodFromRecord(sessionConfig),
-    startDateTime: sessionConfig?.startDateTime ?? getDefaultStartDateTimeValue(),
+    sessionDate,
+    sessionPeriod,
+    startDateTime: combineDateAndTime(sessionDate, startTime),
     matchDurationMinutes: Number(sessionConfig?.matchDurationMinutes ?? 90),
     breakIntervalMinutes: Number(sessionConfig?.breakIntervalMinutes ?? 10),
     selectedCourts: Array.isArray(sessionConfig?.courts) && sessionConfig.courts.length > 0
@@ -139,24 +208,28 @@ export default function SetupPage() {
   const { state, setSession, selectSession, updateSessionConfig, deleteSession, clearError } = useSession()
   const navigate = useNavigate()
   const sessionPickerRef = useRef(null)
-  const startDateTimeInputRef = useRef(null)
   const courtPickerRef = useRef(null)
   const [form, setForm] = useState(getDefaultFormState)
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSessionPickerOpen, setIsSessionPickerOpen] = useState(false)
   const [isCourtPickerOpen, setIsCourtPickerOpen] = useState(false)
+  const [openSetupDropdown, setOpenSetupDropdown] = useState(null)
   const [editingSessionId, setEditingSessionId] = useState(null)
   const [sessionDeleteDialog, setSessionDeleteDialog] = useState(null)
+  const todayDateValue = getTodayDateValue()
 
   function validate() {
     const e = {}
     if (!form.sessionDate) e.sessionDate = 'Session date is required'
+    else if (form.sessionDate < todayDateValue) e.sessionDate = 'Session date cannot be in the past'
     if (!SESSION_PERIODS.some(period => period.value === form.sessionPeriod)) {
       e.sessionPeriod = 'Session period is required'
     }
     if (!isValidDateTimeValue(form.startDateTime)) {
       e.startDateTime = 'Match start time is required'
+    } else if (!isTimeInSessionPeriod(getTimeValueFromDateTime(form.startDateTime), form.sessionPeriod)) {
+      e.startDateTime = 'Match start time must match the selected session period'
     }
     if (!MATCH_DURATION_OPTIONS.some(option => Number(option.value) === Number(form.matchDurationMinutes))) {
       e.matchDurationMinutes = 'Match duration is required'
@@ -214,10 +287,41 @@ export default function SetupPage() {
     ? null
     : state.sessions.find(session => session.id === editingSessionId) ?? null
   const sessionName = formatSessionName(form.sessionDate, form.sessionPeriod)
+  const startTimeOptions = getTimeOptionsForPeriod(form.sessionPeriod)
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: undefined }))
+  }
+
+  function setSessionDate(value) {
+    setForm(prev => ({
+      ...prev,
+      sessionDate: value,
+      startDateTime: combineDateAndTime(value, getTimeValueFromDateTime(prev.startDateTime)),
+    }))
+    if (errors.sessionDate) setErrors(prev => ({ ...prev, sessionDate: undefined }))
+  }
+
+  function setSessionPeriod(value) {
+    setForm(prev => ({
+      ...prev,
+      sessionPeriod: value,
+      startDateTime: combineDateAndTime(
+        prev.sessionDate,
+        normaliseTimeForPeriod(getTimeValueFromDateTime(prev.startDateTime), value)
+      ),
+    }))
+    if (errors.sessionPeriod) setErrors(prev => ({ ...prev, sessionPeriod: undefined }))
+    if (errors.startDateTime) setErrors(prev => ({ ...prev, startDateTime: undefined }))
+  }
+
+  function setStartTime(value) {
+    setForm(prev => ({
+      ...prev,
+      startDateTime: combineDateAndTime(prev.sessionDate, value),
+    }))
+    if (errors.startDateTime) setErrors(prev => ({ ...prev, startDateTime: undefined }))
   }
 
   function toggleCourt(court) {
@@ -255,28 +359,90 @@ export default function SetupPage() {
     ? form.selectedCourts.join(', ')
     : 'Select courts'
 
-  function openStartDateTimePicker() {
-    const input = startDateTimeInputRef.current
-    if (!input) return
-    if (typeof input.showPicker === 'function') {
-      input.showPicker()
-      return
-    }
-    input.focus()
-    input.click()
+  function toggleSessionPicker() {
+    setIsSessionPickerOpen(open => !open)
+    setIsCourtPickerOpen(false)
+    setOpenSetupDropdown(null)
+  }
+
+  function toggleCourtPicker() {
+    setIsCourtPickerOpen(open => !open)
+    setIsSessionPickerOpen(false)
+    setOpenSetupDropdown(null)
+  }
+
+  function toggleSetupDropdown(id) {
+    setOpenSetupDropdown(current => current === id ? null : id)
+    setIsSessionPickerOpen(false)
+    setIsCourtPickerOpen(false)
+  }
+
+  function renderSetupDropdown({ id, value, options, onChange }) {
+    const selectedOption = options.find(option => String(option.value) === String(value))
+    const isOpen = openSetupDropdown === id
+
+    return (
+      <div data-setup-dropdown className={`relative ${isOpen ? 'z-50' : 'z-0'}`}>
+        <button
+          type="button"
+          onClick={() => toggleSetupDropdown(id)}
+          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-coral-400 flex items-center justify-between gap-4"
+        >
+          <span className="truncate">{selectedOption?.label ?? 'Select an option'}</span>
+          <svg
+            className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
+          </svg>
+        </button>
+
+        {isOpen && (
+          <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+            <div className="max-h-72 overflow-y-auto pr-1">
+              {options.map(option => {
+                const selected = String(option.value) === String(value)
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value)
+                      setOpenSetupDropdown(null)
+                    }}
+                    className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-all ${
+                      selected
+                        ? 'bg-green-50 text-green-800'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   useEffect(() => {
-    if (!isCourtPickerOpen && !isSessionPickerOpen) return
+    if (!isCourtPickerOpen && !isSessionPickerOpen && !openSetupDropdown) return
 
     function handlePointerDown(event) {
       if (sessionPickerRef.current?.contains(event.target)) return
       if (courtPickerRef.current?.contains(event.target)) return
+      if (event.target.closest?.('[data-setup-dropdown]')) return
 
       if (isSessionPickerOpen) setIsSessionPickerOpen(false)
       if (!courtPickerRef.current?.contains(event.target)) {
         setIsCourtPickerOpen(false)
       }
+      if (openSetupDropdown) setOpenSetupDropdown(null)
     }
 
     document.addEventListener('mousedown', handlePointerDown)
@@ -285,7 +451,7 @@ export default function SetupPage() {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('touchstart', handlePointerDown)
     }
-  }, [isCourtPickerOpen, isSessionPickerOpen])
+  }, [isCourtPickerOpen, isSessionPickerOpen, openSetupDropdown])
 
   useEffect(() => {
     if (editingSessionId == null) return
@@ -367,7 +533,7 @@ export default function SetupPage() {
                     />
                     <button
                       type="button"
-                      onClick={() => setIsSessionPickerOpen(open => !open)}
+                      onClick={toggleSessionPicker}
                       className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-coral-600 transition-colors"
                       aria-label="Choose session date"
                     >
@@ -382,8 +548,9 @@ export default function SetupPage() {
                             <input
                               type="date"
                               lang="en-AU"
+                              min={todayDateValue}
                               value={form.sessionDate}
-                              onChange={e => set('sessionDate', e.target.value)}
+                              onChange={e => setSessionDate(e.target.value)}
                               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
                             />
                             {errors.sessionDate && <p className="text-xs text-red-500">{errors.sessionDate}</p>}
@@ -393,7 +560,7 @@ export default function SetupPage() {
                               <button
                                 key={period.value}
                                 type="button"
-                                onClick={() => set('sessionPeriod', period.value)}
+                                onClick={() => setSessionPeriod(period.value)}
                                 className={`py-2.5 rounded-xl border text-sm font-bold transition-all ${
                                   form.sessionPeriod === period.value
                                     ? 'border-green-700 bg-green-50 text-green-800 shadow-sm'
@@ -416,7 +583,7 @@ export default function SetupPage() {
                   <div ref={courtPickerRef} className="relative">
                     <button
                       type="button"
-                      onClick={() => setIsCourtPickerOpen(open => !open)}
+                      onClick={toggleCourtPicker}
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm text-left text-sm text-gray-700 flex items-center justify-between gap-4 hover:border-gray-300 transition-all"
                     >
                       <span className="truncate">{selectedCourtLabels}</span>
@@ -475,112 +642,60 @@ export default function SetupPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 animate-slide-up" style={{ animationDelay: '0.08s' }}>
+              <div
+                className={`grid grid-cols-2 gap-4 animate-slide-up relative ${
+                  ['start-time', 'match-duration'].includes(openSetupDropdown) ? 'z-40' : 'z-20'
+                }`}
+                style={{ animationDelay: '0.08s' }}
+              >
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
                   <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Match Start Time</label>
-                  <div className="relative">
-                    <input
-                      ref={startDateTimeInputRef}
-                      type="datetime-local"
-                      lang="en-AU"
-                      value={form.startDateTime}
-                      onChange={e => set('startDateTime', e.target.value)}
-                      className="w-full px-4 pr-12 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={openStartDateTimePicker}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-coral-600 transition-colors"
-                      aria-label="Choose match start time"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 2v4m8-4v4M3 10h18M5 6h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
-                      </svg>
-                    </button>
-                  </div>
+                  {renderSetupDropdown({
+                    id: 'start-time',
+                    value: getTimeValueFromDateTime(form.startDateTime),
+                    options: startTimeOptions,
+                    onChange: setStartTime,
+                  })}
                   {errors.startDateTime && <p className="text-xs text-red-500">{errors.startDateTime}</p>}
                 </div>
 
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
                   <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Match Duration</label>
-                  <div className="relative">
-                    <select
-                      value={form.matchDurationMinutes}
-                      onChange={e => set('matchDurationMinutes', e.target.value)}
-                      className="w-full appearance-none px-4 pr-12 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
-                    >
-                      {MATCH_DURATION_OPTIONS.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      className="w-4 h-4 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
-                    </svg>
-                  </div>
+                  {renderSetupDropdown({
+                    id: 'match-duration',
+                    value: form.matchDurationMinutes,
+                    options: MATCH_DURATION_OPTIONS,
+                    onChange: value => set('matchDurationMinutes', value),
+                  })}
                   {errors.matchDurationMinutes && <p className="text-xs text-red-500">{errors.matchDurationMinutes}</p>}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+              <div
+                className={`grid grid-cols-2 gap-4 animate-slide-up relative ${
+                  ['break-interval', 'format'].includes(openSetupDropdown) ? 'z-40' : 'z-10'
+                }`}
+                style={{ animationDelay: '0.1s' }}
+              >
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
                   <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Break Interval</label>
-                  <div className="relative">
-                    <select
-                      value={form.breakIntervalMinutes}
-                      onChange={e => set('breakIntervalMinutes', e.target.value)}
-                      className="w-full appearance-none px-4 pr-12 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
-                    >
-                      {BREAK_INTERVAL_OPTIONS.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      className="w-4 h-4 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
-                    </svg>
-                  </div>
+                  {renderSetupDropdown({
+                    id: 'break-interval',
+                    value: form.breakIntervalMinutes,
+                    options: BREAK_INTERVAL_OPTIONS,
+                    onChange: value => set('breakIntervalMinutes', value),
+                  })}
                   {errors.breakIntervalMinutes && <p className="text-xs text-red-500">{errors.breakIntervalMinutes}</p>}
                 </div>
 
                 <div className="col-span-2 sm:col-span-1 flex flex-col gap-2">
                   <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Format</label>
-                  <div className="relative">
-                    <select
-                      value={form.gameMode}
-                      onChange={e => set('gameMode', e.target.value)}
-                      className="w-full appearance-none px-4 pr-12 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
-                    >
-                      {GAME_MODES.map(mode => (
-                        <option key={mode.value} value={mode.value}>
-                          {mode.label}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      className="w-4 h-4 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 7.5l5 5 5-5" />
-                    </svg>
-                  </div>
+                  {renderSetupDropdown({
+                    id: 'format',
+                    value: form.gameMode,
+                    options: GAME_MODES,
+                    onChange: value => set('gameMode', value),
+                  })}
                   {errors.gameMode && <p className="text-xs text-red-500">{errors.gameMode}</p>}
                 </div>
               </div>
