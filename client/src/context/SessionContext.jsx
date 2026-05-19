@@ -13,6 +13,8 @@ const initialState = {
   nextSessionId: 1,
   nextPlayerId: 1,
   error: null,
+  isLoading: false,
+  hasLoaded: false,
 }
 
 function getSelectedSessionStorageKey(userId) {
@@ -576,8 +578,11 @@ function migrateLegacyState(saved) {
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'LOAD_START':
+      return { ...state, isLoading: true, error: null }
+
     case 'LOAD_STATE':
-      return action.payload
+      return { ...action.payload, isLoading: false, hasLoaded: true }
 
     case 'SET_SESSION': {
       const sessionRecord = createEmptySession(action.payload, state.nextSessionId)
@@ -847,7 +852,7 @@ function reducer(state, action) {
       }))
 
     case 'SET_ERROR':
-      return { ...state, error: action.payload }
+      return { ...state, error: action.payload, isLoading: false, hasLoaded: true }
 
     case 'CLEAR_ERROR':
       return { ...state, error: null }
@@ -911,6 +916,7 @@ export function SessionProvider({ children }) {
   }, [isAuthenticated, token, user?.id, state.currentSessionId])
 
   async function loadAll() {
+    dispatch({ type: 'LOAD_START' })
     try {
       const [sessions, players] = await Promise.all([
         api.getSessions(token),
@@ -1094,6 +1100,8 @@ export function SessionProvider({ children }) {
     playerLibrary: state.playerLibrary,
     playerDatabase,
     error: state.error,
+    isLoading: state.isLoading,
+    hasLoaded: state.hasLoaded,
   }
 
   async function setSession(config) {

@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SessionProvider } from './context/SessionContext'
+import { useSession } from './context/SessionContext'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/layout/Navbar'
+import LoadingScreen from './components/ui/LoadingScreen'
 import HomePage from './pages/HomePage'
 import AuthPage from './pages/AuthPage'
 import FairnessAnalysisPage from './pages/FairnessAnalysisPage'
@@ -14,7 +16,9 @@ import ProfilePage from './pages/ProfilePage'
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth()
+  const { state } = useSession()
   if (!isAuthenticated) return <Navigate to="/auth" replace />
+  if (state.isLoading || !state.hasLoaded) return <LoadingScreen />
   return children
 }
 

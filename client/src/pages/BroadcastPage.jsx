@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSession } from '../context/SessionContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { RatingBadge, GenderBadge } from '../components/ui/Badge'
+import LoadingScreen from '../components/ui/LoadingScreen'
 import { formatBroadcastRoundStatusLabel, getRoundSessionState } from '../utils/roundSchedule'
 
 const SESSION_STATES = [
@@ -152,6 +153,15 @@ export default function BroadcastPage() {
 
   function handleSelectSessionState(sessionState) {
     setSelectedSessionState(sessionState)
+  }
+
+  if (state.isLoading || !state.hasLoaded) {
+    return (
+      <LoadingScreen
+        message="Loading broadcast schedule"
+        detail="Fetching the latest rounds and broadcast settings from the server."
+      />
+    )
   }
 
   if (!state.isBroadcasting) {
