@@ -28,6 +28,26 @@ function InputField({ label, value, onChange, type = 'text' }) {
   )
 }
 
+function InlineHistoryLoader() {
+  return (
+    <div className="rounded-2xl border border-green-100 bg-green-50/70 px-5 py-6 text-center animate-fade-in">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm">
+        <div className="setmaker-loader scale-75" aria-hidden="true">
+          <span className="setmaker-loader__ball" />
+          <span className="setmaker-loader__shadow" />
+        </div>
+      </div>
+      <p className="mt-4 text-sm font-black text-green-900">Loading session history</p>
+      <p className="mt-1 text-xs leading-relaxed text-stone-500">Fetching your saved sessions from the server.</p>
+      <div className="mt-4 flex items-center justify-center gap-2" aria-label="Loading">
+        <span className="h-2 w-2 rounded-full bg-coral-500 setmaker-loader__dot" />
+        <span className="h-2 w-2 rounded-full bg-green-700 setmaker-loader__dot setmaker-loader__dot--delay-1" />
+        <span className="h-2 w-2 rounded-full bg-amber-400 setmaker-loader__dot setmaker-loader__dot--delay-2" />
+      </div>
+    </div>
+  )
+}
+
 function PasswordInputField({ label, value, onChange, placeholder }) {
   const [visible, setVisible] = useState(false)
   return (
@@ -156,7 +176,10 @@ export default function ProfilePage() {
   }
 
   async function handleToggleHistory() {
-    if (!isHistoryOpen && sessions.length === 0) {
+    const nextIsOpen = !isHistoryOpen
+    setIsHistoryOpen(nextIsOpen)
+
+    if (nextIsOpen && sessions.length === 0) {
       setSessionsLoading(true)
       try {
         const data = await api.getSessions(token)
@@ -167,7 +190,6 @@ export default function ProfilePage() {
         setSessionsLoading(false)
       }
     }
-    setIsHistoryOpen(open => !open)
   }
 
   const initials = (user?.name || 'ST')
@@ -337,7 +359,7 @@ export default function ProfilePage() {
             {isHistoryOpen && (
               <div className="mt-5 flex flex-col gap-4">
                 {sessionsLoading ? (
-                  <p className="text-sm text-stone-400">Loading…</p>
+                  <InlineHistoryLoader />
                 ) : sessions.length === 0 ? (
                   <p className="text-sm text-stone-400">No sessions found.</p>
                 ) : (
