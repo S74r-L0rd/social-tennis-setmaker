@@ -117,8 +117,8 @@ function adaptBackendSession(s) {
     players: adaptSessionPlayers(s.sessionPlayers ?? []),
     rounds,
     history: { partner: {}, opponent: {} },
-    isBroadcasting: false,
-    selectedBroadcastRoundNumber: rounds.length > 0 ? rounds[rounds.length - 1].roundNumber : null,
+    isBroadcasting: Boolean(s.isBroadcasting),
+    selectedBroadcastRoundNumber: s.selectedBroadcastRoundNumber ?? (rounds.length > 0 ? rounds[rounds.length - 1].roundNumber : null),
   }
 }
 
@@ -826,6 +826,7 @@ function reducer(state, action) {
         rounds: [],
         selectedBroadcastRoundNumber: null,
         history: { partner: {}, opponent: {} },
+        isBroadcasting: false,
       }))
 
     case 'TOGGLE_BROADCAST':
@@ -1254,6 +1255,30 @@ export function SessionProvider({ children }) {
     }
   }
 
+  async function setBroadcastRound(roundNumber) {
+    try {
+      if (!state.currentSessionId) return
+      await api.updateSession(state.currentSessionId, { selectedBroadcastRoundNumber: roundNumber }, token)
+      dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
+  }
+
+  async function toggleBroadcast() {
+    try {
+      if (!state.currentSessionId || !currentSession) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return
+      }
+      const isBroadcasting = !currentSession.isBroadcasting
+      await api.updateSession(state.currentSessionId, { isBroadcasting }, token)
+      dispatch({ type: 'TOGGLE_BROADCAST' })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
+  }
+
   async function removePlayer(playerId) {
     const player = currentSession?.players.find(p => p.id === playerId)
 
@@ -1285,11 +1310,11 @@ export function SessionProvider({ children }) {
     generateRoundFromPlayers,
     confirmAndGenerateNext,
     clearSchedule,
-    setBroadcastRound: (roundNumber) => dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber }),
+    setBroadcastRound,
     reshuffleRound,
     undoReshuffleRound: (roundIdx) => dispatch({ type: 'UNDO_RESHUFFLE_ROUND', payload: roundIdx }),
     swapPlayers,
-    toggleBroadcast: () => dispatch({ type: 'TOGGLE_BROADCAST' }),
+    toggleBroadcast,
     clearError: () => dispatch({ type: 'CLEAR_ERROR' }),
     reset: () => dispatch({ type: 'RESET' }),
     getPlayerById: (id) => currentSession?.players.find(player => player.id === id),

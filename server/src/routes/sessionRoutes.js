@@ -133,7 +133,7 @@ router.put("/:id", requireAuth, async (req, res) => {
     const {
       name, sessionDate, sessionPeriod, startDateTime,
       matchDurationMinutes, breakIntervalMinutes, courtCount,
-      gameMode, ratingMode, status,
+      gameMode, ratingMode, status, isBroadcasting, selectedBroadcastRoundNumber,
     } = req.body;
     const updates = {};
     if (name !== undefined)                 updates.name = name;
@@ -146,6 +146,12 @@ router.put("/:id", requireAuth, async (req, res) => {
     if (gameMode !== undefined)             updates.gameMode = gameMode;
     if (ratingMode !== undefined)           updates.ratingMode = ratingMode;
     if (status !== undefined)               updates.status = status;
+    if (isBroadcasting !== undefined)       updates.isBroadcasting = Boolean(isBroadcasting);
+    if (selectedBroadcastRoundNumber !== undefined) {
+      updates.selectedBroadcastRoundNumber = selectedBroadcastRoundNumber === null
+        ? null
+        : Number(selectedBroadcastRoundNumber);
+    }
 
     const session = await updateSession(sessionId, updates);
 
@@ -154,6 +160,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       data: session,
     });
   } catch (error) {
+    console.error("Update session error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to update session.",

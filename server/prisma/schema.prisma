@@ -43,6 +43,8 @@ model Session {
   gameMode                 String?
   ratingMode               String?
   status                   SessionStatus   @default(DRAFT)
+  isBroadcasting           Boolean         @default(false)
+  selectedBroadcastRoundNumber Int?
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 

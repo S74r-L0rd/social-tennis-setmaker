@@ -217,6 +217,11 @@ router.post("/generate", requireAuth, async (req, res) => {
         });
       }
 
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { selectedBroadcastRoundNumber: nextRoundNumber },
+      });
+
       // Return the full round with all nested data
       return tx.round.findUnique({
         where: { id: round.id },
@@ -427,6 +432,14 @@ router.delete("/session/:sessionId", requireAuth, async (req, res) => {
         data: {
           roundsPlayed: 0,
           sitOutCount: 0,
+        },
+      });
+
+      await tx.session.update({
+        where: { id: sessionId },
+        data: {
+          isBroadcasting: false,
+          selectedBroadcastRoundNumber: null,
         },
       });
 

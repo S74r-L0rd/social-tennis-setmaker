@@ -162,6 +162,11 @@ export default function BroadcastPage() {
           <h2 className="text-3xl font-black text-green-900">Broadcast is off</h2>
           <p className="text-base text-gray-400 mt-1.5">Turn on broadcast so players can view the schedule</p>
         </div>
+        {state.error && (
+          <div className="max-w-lg rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {state.error}
+          </div>
+        )}
         <button onClick={toggleBroadcast}
           className="px-8 py-3.5 bg-coral-500 hover:bg-coral-600 text-white rounded-xl font-black text-sm transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]">
           Start Broadcasting
