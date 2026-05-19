@@ -59,9 +59,9 @@ function getDefaultStartDateTimeValue() {
 }
 
 function getTimeValueFromDateTime(value) {
-  if (typeof value !== 'string') return '09:00'
+  if (typeof value !== 'string') return ''
   const match = value.match(/T(\d{2}:\d{2})/)
-  return match?.[1] ?? '09:00'
+  return match?.[1] ?? ''
 }
 
 function getMinutesFromTimeValue(value) {
@@ -111,27 +111,31 @@ function normaliseTimeForPeriod(timeValue, periodValue) {
 }
 
 function combineDateAndTime(dateValue, timeValue) {
-  const date = dateValue || getTodayDateValue()
-  const time = timeValue || '09:00'
-  return `${date}T${time}`
+  if (!dateValue || !timeValue) return ''
+  return `${dateValue}T${timeValue}`
 }
 
 function getDefaultFormState() {
   return {
-    sessionDate: getTodayDateValue(),
-    sessionPeriod: 'morning',
-    startDateTime: combineDateAndTime(getTodayDateValue(), getDefaultTimeForPeriod('morning')),
-    matchDurationMinutes: 90,
-    breakIntervalMinutes: 10,
-    selectedCourts: ['Court 1'],
-    gameMode: 'flexible',
+    sessionDate: '',
+    sessionPeriod: '',
+    startDateTime: '',
+    matchDurationMinutes: '',
+    breakIntervalMinutes: '',
+    selectedCourts: [],
+    gameMode: '',
   }
 }
 
 function formatSessionName(dateValue, periodValue) {
+  if (!dateValue || !periodValue) return ''
+
   const [year, month, day] = dateValue.split('-').map(Number)
   const date = new Date(year, month - 1, day)
-  const periodLabel = SESSION_PERIODS.find(period => period.value === periodValue)?.label ?? 'Morning'
+  const periodLabel = SESSION_PERIODS.find(period => period.value === periodValue)?.label
+
+  if (Number.isNaN(date.getTime()) || !periodLabel) return ''
+
   return `${date.toLocaleDateString('en-AU', {
     day: 'numeric',
     month: 'short',
@@ -174,26 +178,30 @@ function getSessionPeriodFromRecord(sessionConfig) {
 function getSessionDateFromRecord(sessionConfig) {
   if (sessionConfig?.sessionDate) return sessionConfig.sessionDate
   if (sessionConfig?.startDateTime) return sessionConfig.startDateTime.slice(0, 10)
-  return getTodayDateValue()
+  return ''
 }
 
 function createFormStateFromSession(sessionConfig) {
   const sessionDate = getSessionDateFromRecord(sessionConfig)
   const sessionPeriod = getSessionPeriodFromRecord(sessionConfig)
   const startTime = normaliseTimeForPeriod(
-    getTimeValueFromDateTime(sessionConfig?.startDateTime ?? getDefaultStartDateTimeValue()),
+    getTimeValueFromDateTime(sessionConfig?.startDateTime),
     sessionPeriod
   )
   return {
     sessionDate,
     sessionPeriod,
     startDateTime: combineDateAndTime(sessionDate, startTime),
-    matchDurationMinutes: Number(sessionConfig?.matchDurationMinutes ?? 90),
-    breakIntervalMinutes: Number(sessionConfig?.breakIntervalMinutes ?? 10),
+    matchDurationMinutes: sessionConfig?.matchDurationMinutes != null
+      ? Number(sessionConfig.matchDurationMinutes)
+      : '',
+    breakIntervalMinutes: sessionConfig?.breakIntervalMinutes != null
+      ? Number(sessionConfig.breakIntervalMinutes)
+      : '',
     selectedCourts: Array.isArray(sessionConfig?.courts) && sessionConfig.courts.length > 0
       ? sessionConfig.courts
-      : ['Court 1'],
-    gameMode: sessionConfig?.gameMode ?? 'flexible',
+      : [],
+    gameMode: sessionConfig?.gameMode ?? '',
   }
 }
 
@@ -306,7 +314,7 @@ export default function SetupPage() {
     ? null
     : state.sessions.find(session => session.id === editingSessionId) ?? null
   const sessionName = formatSessionName(form.sessionDate, form.sessionPeriod)
-  const startTimeOptions = getTimeOptionsForPeriod(form.sessionPeriod)
+  const startTimeOptions = form.sessionPeriod ? getTimeOptionsForPeriod(form.sessionPeriod) : []
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -320,17 +328,22 @@ export default function SetupPage() {
       startDateTime: combineDateAndTime(value, getTimeValueFromDateTime(prev.startDateTime)),
     }))
     if (errors.sessionDate) setErrors(prev => ({ ...prev, sessionDate: undefined }))
+    if (errors.startDateTime) setErrors(prev => ({ ...prev, startDateTime: undefined }))
   }
 
   function setSessionPeriod(value) {
-    setForm(prev => ({
-      ...prev,
-      sessionPeriod: value,
-      startDateTime: combineDateAndTime(
-        prev.sessionDate,
-        normaliseTimeForPeriod(getTimeValueFromDateTime(prev.startDateTime), value)
-      ),
-    }))
+    setForm(prev => {
+      const currentTime = getTimeValueFromDateTime(prev.startDateTime)
+      const nextTime = currentTime && isTimeInSessionPeriod(currentTime, value)
+        ? currentTime
+        : ''
+
+      return {
+        ...prev,
+        sessionPeriod: value,
+        startDateTime: combineDateAndTime(prev.sessionDate, nextTime),
+      }
+    })
     if (errors.sessionPeriod) setErrors(prev => ({ ...prev, sessionPeriod: undefined }))
     if (errors.startDateTime) setErrors(prev => ({ ...prev, startDateTime: undefined }))
   }
@@ -396,7 +409,7 @@ export default function SetupPage() {
     setIsCourtPickerOpen(false)
   }
 
-  function renderSetupDropdown({ id, value, options, onChange }) {
+  function renderSetupDropdown({ id, value, options, onChange, placeholder }) {
     const selectedOption = options.find(option => String(option.value) === String(value))
     const isOpen = openSetupDropdown === id
 
@@ -407,7 +420,9 @@ export default function SetupPage() {
           onClick={() => toggleSetupDropdown(id)}
           className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm text-gray-700 shadow-sm transition-all hover:border-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-coral-400 flex items-center justify-between gap-4"
         >
-          <span className="truncate">{selectedOption?.label ?? 'Select an option'}</span>
+          <span className={`truncate ${selectedOption ? '' : 'text-gray-400'}`}>
+            {selectedOption?.label ?? placeholder ?? 'Select an option'}
+          </span>
           <svg
             className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
             viewBox="0 0 20 20"
@@ -422,6 +437,12 @@ export default function SetupPage() {
         {isOpen && (
           <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
             <div className="max-h-72 overflow-y-auto pr-1">
+              {options.length === 0 && (
+                <div className="px-3 py-2.5 text-sm font-bold text-gray-400">
+                  Select session date and period first
+                </div>
+              )}
+
               {options.map(option => {
                 const selected = String(option.value) === String(value)
                 return (
@@ -553,7 +574,8 @@ export default function SetupPage() {
                       type="text"
                       value={sessionName}
                       readOnly
-                      className="w-full px-4 pr-12 py-3 rounded-xl border text-sm border-gray-200 bg-white shadow-sm text-gray-700"
+                      placeholder="Select session date and period"
+                      className="w-full px-4 pr-12 py-3 rounded-xl border text-sm border-gray-200 bg-white shadow-sm text-gray-700 placeholder:text-gray-400"
                     />
                     <button
                       type="button"
@@ -679,6 +701,7 @@ export default function SetupPage() {
                     value: getTimeValueFromDateTime(form.startDateTime),
                     options: startTimeOptions,
                     onChange: setStartTime,
+                    placeholder: 'Select start time',
                   })}
                   {errors.startDateTime && <p className="text-xs text-red-500">{errors.startDateTime}</p>}
                 </div>
@@ -690,6 +713,7 @@ export default function SetupPage() {
                     value: form.matchDurationMinutes,
                     options: MATCH_DURATION_OPTIONS,
                     onChange: value => set('matchDurationMinutes', value),
+                    placeholder: 'Select duration',
                   })}
                   {errors.matchDurationMinutes && <p className="text-xs text-red-500">{errors.matchDurationMinutes}</p>}
                 </div>
@@ -708,6 +732,7 @@ export default function SetupPage() {
                     value: form.breakIntervalMinutes,
                     options: BREAK_INTERVAL_OPTIONS,
                     onChange: value => set('breakIntervalMinutes', value),
+                    placeholder: 'Select interval',
                   })}
                   {errors.breakIntervalMinutes && <p className="text-xs text-red-500">{errors.breakIntervalMinutes}</p>}
                 </div>
@@ -719,6 +744,7 @@ export default function SetupPage() {
                     value: form.gameMode,
                     options: GAME_MODES,
                     onChange: value => set('gameMode', value),
+                    placeholder: 'Select format',
                   })}
                   {errors.gameMode && <p className="text-xs text-red-500">{errors.gameMode}</p>}
                 </div>
