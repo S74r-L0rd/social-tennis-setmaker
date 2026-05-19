@@ -204,6 +204,25 @@ function isValidDateTimeValue(value) {
   return !Number.isNaN(date.getTime())
 }
 
+function isSessionInProgress(sessionConfig, now = new Date()) {
+  if (!sessionConfig?.startDateTime) return false
+
+  const start = new Date(sessionConfig.startDateTime)
+  if (Number.isNaN(start.getTime())) return false
+
+  const matchDuration = Number(sessionConfig.matchDurationMinutes ?? 90)
+  const breakInterval = Number(sessionConfig.breakIntervalMinutes ?? 0)
+  const roundsCount = Number(sessionConfig.roundsCount ?? 1)
+
+  const totalMinutes = roundsCount > 1
+    ? (roundsCount * matchDuration) + ((roundsCount - 1) * breakInterval)
+    : matchDuration
+
+  const end = new Date(start.getTime() + totalMinutes * 60 * 1000)
+
+  return now >= start && now <= end
+}
+
 export default function SetupPage() {
   const { state, setSession, selectSession, updateSessionConfig, deleteSession, clearError } = useSession()
   const navigate = useNavigate()
@@ -752,6 +771,10 @@ export default function SetupPage() {
                   {sessions.map(sessionRecord => {
                     const isCurrent = sessionRecord.id === state.currentSessionId
                     const isEditingSession = sessionRecord.id === editingSessionId
+                    const isInProgress = isSessionInProgress({
+                      ...sessionRecord.session,
+                      roundsCount: sessionRecord.roundsCount,
+                    })
 
                     return (
                       <button
@@ -774,11 +797,11 @@ export default function SetupPage() {
                             <div className="flex items-center gap-2">
                               <span
                                 className={`relative inline-flex h-3 w-3 flex-shrink-0 rounded-full ${
-                                  isCurrent ? 'bg-green-500' : 'bg-gray-300'
+                                  isInProgress ? 'bg-green-500' : 'bg-gray-300'
                                 }`}
                                 aria-hidden="true"
                               >
-                                {isCurrent && (
+                                {isInProgress && (
                                   <span className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75" />
                                 )}
                               </span>
