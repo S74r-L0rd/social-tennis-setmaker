@@ -299,6 +299,17 @@ function swapPlayersInRound(round, playerIdA, playerIdB) {
   return newRound
 }
 
+function getPlayerRoundPosition(round, playerId) {
+  for (const match of round?.matches ?? []) {
+    for (const team of match.teams ?? []) {
+      if ((team ?? []).some(player => player.id === playerId)) return 'match'
+    }
+  }
+
+  if ((round?.sitOuts ?? []).some(player => player.id === playerId)) return 'sitout'
+  return null
+}
+
 function buildPlayerDatabase(sessions, playerLibrary) {
   const statsByPlayerId = new Map(
     playerLibrary.map(player => [player.id, {
@@ -700,13 +711,43 @@ function reducer(state, action) {
 
     case 'SWAP_PLAYERS':
       return updateCurrentSession(state, session => {
+        const currentRound = session.rounds[action.payload.roundIdx]
+        if (!currentRound) return session
+
         const rounds = [...session.rounds]
-        rounds[action.payload.roundIdx] = swapPlayersInRound(
-          rounds[action.payload.roundIdx],
-          action.payload.playerIdA,
-          action.payload.playerIdB
-        )
-        return { ...session, rounds }
+        rounds[action.payload.roundIdx] = action.payload.round
+          ?? swapPlayersInRound(
+            currentRound,
+            action.payload.playerIdA,
+            action.payload.playerIdB
+          )
+
+        const positionA = getPlayerRoundPosition(currentRound, action.payload.playerIdA)
+        const positionB = getPlayerRoundPosition(currentRound, action.payload.playerIdB)
+        const crossedMatchAndSitOut = [positionA, positionB].includes('match')
+          && [positionA, positionB].includes('sitout')
+
+        if (!crossedMatchAndSitOut) return { ...session, rounds }
+
+        return {
+          ...session,
+          rounds,
+          players: session.players.map(player => {
+            if (player.id === action.payload.playerIdA) {
+              return positionA === 'match'
+                ? { ...player, roundsPlayed: Math.max(0, player.roundsPlayed - 1), sitOutCount: player.sitOutCount + 1 }
+                : { ...player, roundsPlayed: player.roundsPlayed + 1, sitOutCount: Math.max(0, player.sitOutCount - 1) }
+            }
+
+            if (player.id === action.payload.playerIdB) {
+              return positionB === 'match'
+                ? { ...player, roundsPlayed: Math.max(0, player.roundsPlayed - 1), sitOutCount: player.sitOutCount + 1 }
+                : { ...player, roundsPlayed: player.roundsPlayed + 1, sitOutCount: Math.max(0, player.sitOutCount - 1) }
+            }
+
+            return player
+          }),
+        }
       })
 
     case 'RESHUFFLE_ROUND_RESULT':
@@ -949,6 +990,32 @@ export function SessionProvider({ children }) {
     }
   }
 
+  async function swapPlayers(roundIdx, playerIdA, playerIdB) {
+    try {
+      if (!currentSession) return
+      const round = currentSession.rounds[roundIdx]
+      if (!round) return
+
+      if (round.isConfirmed) {
+        dispatch({ type: 'SET_ERROR', payload: 'Confirmed rounds cannot be edited.' })
+        return
+      }
+
+      if (!round._dbId) {
+        dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } })
+        return
+      }
+
+      const savedRound = await api.swapRoundPlayers(round._dbId, playerIdA, playerIdB, token)
+      dispatch({
+        type: 'SWAP_PLAYERS',
+        payload: { roundIdx, playerIdA, playerIdB, round: adaptBackendRound(savedRound) },
+      })
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
+    }
+  }
+
   const publicState = {
     sessions: state.sessions.map(session => ({
       id: session.id,
@@ -1184,8 +1251,7 @@ export function SessionProvider({ children }) {
     setBroadcastRound: (roundNumber) => dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber }),
     reshuffleRound,
     undoReshuffleRound: (roundIdx) => dispatch({ type: 'UNDO_RESHUFFLE_ROUND', payload: roundIdx }),
-    swapPlayers: (roundIdx, playerIdA, playerIdB) =>
-      dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } }),
+    swapPlayers,
     toggleBroadcast: () => dispatch({ type: 'TOGGLE_BROADCAST' }),
     clearError: () => dispatch({ type: 'CLEAR_ERROR' }),
     reset: () => dispatch({ type: 'RESET' }),

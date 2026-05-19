@@ -40,11 +40,13 @@ export default function SchedulePage() {
     : 0
   const isCurrentTab = safeActiveTab === currentRoundIdx
   const currentRound = state.rounds[safeActiveTab]
+  const isRoundEditable = Boolean(currentRound && !currentRound.isConfirmed)
   const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)
   const roundStartLabel = currentRound ? formatRoundStartLabel(state.session, currentRound.roundNumber) : null
 
   function handleDragEnd({ active, over }) {
+    if (!isRoundEditable) return
     if (!over || active.id === over.id) return
     swapPlayers(safeActiveTab, Number(active.id), Number(over.id))
   }
@@ -73,7 +75,7 @@ export default function SchedulePage() {
   }
 
   function handleReshuffleCurrentRound() {
-    if (!currentRound || sessionScheduleIssue) return
+    if (!isRoundEditable || sessionScheduleIssue) return
     reshuffleRound(safeActiveTab)
   }
 
@@ -125,7 +127,8 @@ export default function SchedulePage() {
           <button
             type="button"
             onClick={handleReshuffleCurrentRound}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:border-coral-400 hover:text-coral-600 bg-white shadow-sm hover:shadow-md transition-all duration-200 font-bold active:scale-[0.97]"
+            disabled={!isRoundEditable}
+            className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:border-coral-400 hover:text-coral-600 bg-white shadow-sm hover:shadow-md transition-all duration-200 font-bold disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
           >
             Reshuffle Current Round
           </button>
@@ -187,7 +190,7 @@ export default function SchedulePage() {
         </button>
       </div>
 
-      {currentRound && (
+      {isRoundEditable && (
         <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700 font-bold animate-scale-in">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -198,7 +201,7 @@ export default function SchedulePage() {
 
       {currentRound && (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <RoundPanel round={currentRound} isEditable roundStartLabel={roundStartLabel} />
+          <RoundPanel round={currentRound} isEditable={isRoundEditable} roundStartLabel={roundStartLabel} />
         </DndContext>
       )}
 

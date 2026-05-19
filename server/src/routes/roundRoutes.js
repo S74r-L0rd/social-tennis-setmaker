@@ -16,6 +16,43 @@ function makePairKey(a, b) {
   return [a, b].sort((x, y) => x - y).join("-");
 }
 
+function roundInclude() {
+  return {
+    matches: {
+      orderBy: { matchOrder: "asc" },
+      include: {
+        assignments: {
+          orderBy: [{ teamNumber: "asc" }, { positionInTeam: "asc" }],
+          include: { player: true },
+        },
+      },
+    },
+    sitOuts: {
+      include: {
+        sessionPlayer: { include: { player: true } },
+      },
+    },
+  };
+}
+
+function findPlayerPosition(round, playerId) {
+  for (const match of round.matches ?? []) {
+    for (const assignment of match.assignments ?? []) {
+      if (assignment.playerId === playerId) {
+        return { type: "match", match, assignment };
+      }
+    }
+  }
+
+  for (const sitOut of round.sitOuts ?? []) {
+    if (sitOut.sessionPlayer?.playerId === playerId) {
+      return { type: "sitout", sitOut, sessionPlayer: sitOut.sessionPlayer };
+    }
+  }
+
+  return null;
+}
+
 // POST /api/rounds/generate
 // Generates a round from DB state and saves the result back to DB
 router.post("/generate", requireAuth, async (req, res) => {
@@ -206,6 +243,146 @@ router.post("/generate", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Generate round error:", error);
     res.status(500).json({ success: false, error: "Failed to generate round." });
+  }
+});
+
+// PATCH /api/rounds/:id/swap
+// Persists a manual drag/drop swap for an unconfirmed round.
+router.patch("/:id/swap", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const playerIdA = Number(req.body.playerIdA);
+    const playerIdB = Number(req.body.playerIdB);
+
+    if (!isValidId(id) || !isValidId(playerIdA) || !isValidId(playerIdB)) {
+      return res.status(400).json({ success: false, error: "Invalid round or player id." });
+    }
+
+    if (playerIdA === playerIdB) {
+      return res.status(400).json({ success: false, error: "Select two different players to swap." });
+    }
+
+    const existing = await getRoundById(id);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: "Round not found." });
+    }
+
+    if (existing.isConfirmed) {
+      return res.status(400).json({
+        success: false,
+        error: "Confirmed rounds cannot be edited.",
+      });
+    }
+
+    const positionA = findPlayerPosition(existing, playerIdA);
+    const positionB = findPlayerPosition(existing, playerIdB);
+
+    if (!positionA || !positionB) {
+      return res.status(400).json({
+        success: false,
+        error: "Both players must be assigned to this round before they can be swapped.",
+      });
+    }
+
+    const savedRound = await prisma.$transaction(async (tx) => {
+      if (positionA.type === "match" && positionB.type === "match") {
+        await tx.matchAssignment.deleteMany({
+          where: { id: { in: [positionA.assignment.id, positionB.assignment.id] } },
+        });
+
+        await tx.matchAssignment.createMany({
+          data: [
+            {
+              matchId: positionA.assignment.matchId,
+              playerId: playerIdB,
+              teamNumber: positionA.assignment.teamNumber,
+              positionInTeam: positionA.assignment.positionInTeam,
+            },
+            {
+              matchId: positionB.assignment.matchId,
+              playerId: playerIdA,
+              teamNumber: positionB.assignment.teamNumber,
+              positionInTeam: positionB.assignment.positionInTeam,
+            },
+          ],
+        });
+      } else if (positionA.type === "sitout" && positionB.type === "sitout") {
+        await tx.roundSitOut.deleteMany({
+          where: { id: { in: [positionA.sitOut.id, positionB.sitOut.id] } },
+        });
+
+        await tx.roundSitOut.createMany({
+          data: [
+            { roundId: id, sessionPlayerId: positionB.sessionPlayer.id },
+            { roundId: id, sessionPlayerId: positionA.sessionPlayer.id },
+          ],
+        });
+      } else {
+        const matchPosition = positionA.type === "match" ? positionA : positionB;
+        const sitOutPosition = positionA.type === "sitout" ? positionA : positionB;
+        const matchedPlayerId = matchPosition.assignment.playerId;
+        const sitOutPlayerId = sitOutPosition.sessionPlayer.playerId;
+
+        await tx.matchAssignment.delete({
+          where: { id: matchPosition.assignment.id },
+        });
+        await tx.roundSitOut.delete({
+          where: { id: sitOutPosition.sitOut.id },
+        });
+
+        await tx.matchAssignment.create({
+          data: {
+            matchId: matchPosition.assignment.matchId,
+            playerId: sitOutPlayerId,
+            teamNumber: matchPosition.assignment.teamNumber,
+            positionInTeam: matchPosition.assignment.positionInTeam,
+          },
+        });
+
+        const matchedSessionPlayer = await tx.sessionPlayer.findUnique({
+          where: {
+            sessionId_playerId: {
+              sessionId: existing.sessionId,
+              playerId: matchedPlayerId,
+            },
+          },
+        });
+
+        await tx.roundSitOut.create({
+          data: {
+            roundId: id,
+            sessionPlayerId: matchedSessionPlayer.id,
+          },
+        });
+
+        await tx.sessionPlayer.update({
+          where: { id: matchedSessionPlayer.id },
+          data: {
+            roundsPlayed: { decrement: 1 },
+            sitOutCount: { increment: 1 },
+          },
+        });
+
+        await tx.sessionPlayer.update({
+          where: { id: sitOutPosition.sessionPlayer.id },
+          data: {
+            roundsPlayed: { increment: 1 },
+            sitOutCount: { decrement: 1 },
+          },
+        });
+      }
+
+      return tx.round.findUnique({
+        where: { id },
+        include: roundInclude(),
+      });
+    });
+
+    res.status(200).json({ success: true, data: savedRound });
+  } catch (error) {
+    console.error("Swap round players error:", error);
+    res.status(500).json({ success: false, error: "Failed to swap players." });
   }
 });
 

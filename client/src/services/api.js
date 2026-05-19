@@ -49,6 +49,8 @@ export const api = {
   generateRound:  (sessionId, token) => request('POST', '/api/rounds/generate',              { sessionId }, token),
   getRounds:      (sid, token)       => request('GET',  `/api/rounds/session/${sid}`,         undefined,     token),
   clearRounds:    (sid, token)       => request('DELETE', `/api/rounds/session/${sid}`,       undefined,     token),
+  swapRoundPlayers: (roundId, playerIdA, playerIdB, token) =>
+    request('PATCH', `/api/rounds/${roundId}/swap`, { playerIdA, playerIdB }, token),
   confirmRound:   (id, token)        => request('POST', `/api/rounds/${id}/confirm`,          undefined,     token),
 
   // Profile
