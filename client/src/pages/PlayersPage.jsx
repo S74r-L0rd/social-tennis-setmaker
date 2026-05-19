@@ -41,7 +41,7 @@ export default function PlayersPage() {
     ? recentPlayers
     : state.players
   const filteredPlayers = normalizedQuery
-    ? basePlayers.filter(player => player.name.toLowerCase().includes(normalizedQuery))
+    ? basePlayers.filter(player => (player.name ?? '').toLowerCase().includes(normalizedQuery))
     : basePlayers
   const filterTabs = [
     { id: 'playing', label: 'Playing', count: activePlayers.length },
@@ -217,6 +217,7 @@ export default function PlayersPage() {
             </div>
 
             <PlayerTable
+              key={state.currentSessionId ?? 'no-session'}
               players={filteredPlayers}
               onEditPlayer={player => setEditingPlayerId(player.id)}
               editingPlayerId={editingPlayerId}

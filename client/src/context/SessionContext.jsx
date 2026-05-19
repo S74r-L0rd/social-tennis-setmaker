@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
-import { getSessionScheduleIssue } from '../utils/roundSchedule'
+import { getRoundSessionState, getSessionScheduleIssue } from '../utils/roundSchedule'
 import { useAuth } from './AuthContext'
 import { api } from '../services/api'
 
@@ -694,6 +694,16 @@ function reducer(state, action) {
         ),
       }))
 
+    case 'SET_PLAYER_STATUS':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        players: session.players.map(player =>
+          player.id === action.payload.playerId
+            ? { ...player, status: action.payload.status }
+            : player
+        ),
+      }))
+
     case 'SET_FIRST_ROUND':
       return updateCurrentSession(state, session => {
         const nextRound = action.payload
@@ -1030,18 +1040,24 @@ export function SessionProvider({ children }) {
 
   async function swapPlayers(roundIdx, playerIdA, playerIdB) {
     try {
-      if (!currentSession) return
+      if (!currentSession) return false
       const round = currentSession.rounds[roundIdx]
-      if (!round) return
+      if (!round) return false
 
-      if (round.isConfirmed) {
-        dispatch({ type: 'SET_ERROR', payload: 'Confirmed rounds cannot be edited.' })
-        return
+      const roundState = getRoundSessionState(
+        currentSession.session,
+        Number.isInteger(round.roundNumber) ? round.roundNumber : roundIdx + 1,
+        new Date()
+      )
+
+      if (roundState !== 'upcoming') {
+        dispatch({ type: 'SET_ERROR', payload: 'In-progress and completed rounds cannot be edited.' })
+        return false
       }
 
       if (!round._dbId) {
         dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } })
-        return
+        return true
       }
 
       const savedRound = await api.swapRoundPlayers(round._dbId, playerIdA, playerIdB, token)
@@ -1049,8 +1065,10 @@ export function SessionProvider({ children }) {
         type: 'SWAP_PLAYERS',
         payload: { roundIdx, playerIdA, playerIdB, round: adaptBackendRound(savedRound) },
       })
+      return true
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
+      return false
     }
   }
 
@@ -1227,16 +1245,46 @@ export function SessionProvider({ children }) {
 
   async function togglePlayerStatus(playerId) {
     const player = currentSession?.players.find(p => p.id === playerId)
+    if (!player) return false
     const newDbStatus = player?.status === 'active' ? 'RESTING' : 'ACTIVE'
     if (player?._sessionPlayerId) {
       try {
         await api.updateSessionPlayer(player._sessionPlayerId, { status: newDbStatus }, token)
       } catch (err) {
         dispatch({ type: 'SET_ERROR', payload: err.message })
-        return
+        return false
       }
     }
     dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: playerId })
+    return true
+  }
+
+  async function restPlayerWithReplacement(playerId, roundIdx, replacementPlayerId) {
+    const player = currentSession?.players.find(p => p.id === playerId)
+    const round = currentSession?.rounds?.[roundIdx]
+
+    if (!player || !round || !replacementPlayerId) {
+      dispatch({ type: 'SET_ERROR', payload: 'This player cannot be automatically replaced in the current round.' })
+      return false
+    }
+
+    try {
+      const swapped = await swapPlayers(roundIdx, playerId, replacementPlayerId)
+      if (!swapped) return false
+
+      if (player._sessionPlayerId) {
+        await api.updateSessionPlayer(player._sessionPlayerId, { status: 'RESTING' }, token)
+      }
+
+      dispatch({
+        type: 'SET_PLAYER_STATUS',
+        payload: { playerId, status: 'resting' },
+      })
+      return true
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      return false
+    }
   }
 
   async function clearSchedule() {
@@ -1306,6 +1354,7 @@ export function SessionProvider({ children }) {
     updatePlayer,
     removePlayer,
     togglePlayerStatus,
+    restPlayerWithReplacement,
     generateFirstRound,
     generateRoundFromPlayers,
     confirmAndGenerateNext,

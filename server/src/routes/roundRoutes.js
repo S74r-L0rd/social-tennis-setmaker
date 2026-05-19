@@ -53,6 +53,28 @@ function findPlayerPosition(round, playerId) {
   return null;
 }
 
+function getRoundTimingState(session, roundNumber, now = new Date()) {
+  if (!session?.startDateTime || !Number.isInteger(roundNumber) || roundNumber < 1) {
+    return null;
+  }
+
+  const startDate = new Date(session.startDateTime);
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const matchDurationMinutes = Number(session.matchDurationMinutes ?? 90);
+  const breakIntervalMinutes = Number(session.breakIntervalMinutes ?? 0);
+  if (!Number.isFinite(matchDurationMinutes) || matchDurationMinutes <= 0) return null;
+  if (!Number.isFinite(breakIntervalMinutes) || breakIntervalMinutes < 0) return null;
+
+  const roundOffsetMinutes = (roundNumber - 1) * (matchDurationMinutes + breakIntervalMinutes);
+  const roundStart = new Date(startDate.getTime() + roundOffsetMinutes * 60 * 1000);
+  const roundEnd = new Date(roundStart.getTime() + matchDurationMinutes * 60 * 1000);
+
+  if (now < roundStart) return "upcoming";
+  if (now >= roundEnd) return "completed";
+  return "in_progress";
+}
+
 // POST /api/rounds/generate
 // Generates a round from DB state and saves the result back to DB
 router.post("/generate", requireAuth, async (req, res) => {
@@ -255,7 +277,7 @@ router.post("/generate", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/rounds/:id/swap
-// Persists a manual drag/drop swap for an unconfirmed round.
+// Persists a manual drag/drop swap while the round is still upcoming.
 router.patch("/:id/swap", requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -276,10 +298,11 @@ router.patch("/:id/swap", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Round not found." });
     }
 
-    if (existing.isConfirmed) {
+    const timingState = getRoundTimingState(existing.session, existing.roundNumber);
+    if (timingState !== "upcoming") {
       return res.status(400).json({
         success: false,
-        error: "Confirmed rounds cannot be edited.",
+        error: "In-progress and completed rounds cannot be edited.",
       });
     }
 
@@ -331,6 +354,13 @@ router.patch("/:id/swap", requireAuth, async (req, res) => {
         const sitOutPosition = positionA.type === "sitout" ? positionA : positionB;
         const matchedPlayerId = matchPosition.assignment.playerId;
         const sitOutPlayerId = sitOutPosition.sessionPlayer.playerId;
+
+        if (sitOutPosition.sessionPlayer.status !== "ACTIVE") {
+          return res.status(400).json({
+            success: false,
+            error: "A resting player cannot be swapped into a match.",
+          });
+        }
 
         await tx.matchAssignment.delete({
           where: { id: matchPosition.assignment.id },
