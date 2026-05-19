@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext'
 import { api } from '../services/api'
 
 const SessionContext = createContext(null)
+const SELECTED_SESSION_STORAGE_KEY = 'stm-current-session-id'
 
 const initialState = {
   sessions: [],
@@ -12,6 +13,29 @@ const initialState = {
   nextSessionId: 1,
   nextPlayerId: 1,
   error: null,
+}
+
+function getSelectedSessionStorageKey(userId) {
+  return userId ? `${SELECTED_SESSION_STORAGE_KEY}:${userId}` : SELECTED_SESSION_STORAGE_KEY
+}
+
+function readStoredSelectedSessionId(userId) {
+  try {
+    const value = localStorage.getItem(getSelectedSessionStorageKey(userId))
+    const sessionId = Number(value)
+    return Number.isInteger(sessionId) && sessionId > 0 ? sessionId : null
+  } catch {
+    return null
+  }
+}
+
+function storeSelectedSessionId(userId, sessionId) {
+  try {
+    if (!sessionId) return
+    localStorage.setItem(getSelectedSessionStorageKey(userId), String(sessionId))
+  } catch {
+    // Remembering the selected session is a convenience only.
+  }
 }
 
 // ─── Backend → frontend adapters ─────────────────────────────────────────────
@@ -128,12 +152,12 @@ function syncSessionPlayersWithLibrary(sessionPlayers = [], playerLibrary = []) 
   })
 }
 
-function createEmptySession(config, id, playerLibrary = []) {
+function createEmptySession(config, id) {
   return {
     id,
     session: { ...config },
     createdAt: new Date().toISOString(),
-    players: playerLibrary.map(createSessionPlayer),
+    players: [],
     rounds: [],
     selectedBroadcastRoundNumber: null,
     history: { partner: {}, opponent: {} },
@@ -555,7 +579,7 @@ function reducer(state, action) {
       return action.payload
 
     case 'SET_SESSION': {
-      const sessionRecord = createEmptySession(action.payload, state.nextSessionId, state.playerLibrary)
+      const sessionRecord = createEmptySession(action.payload, state.nextSessionId)
       return {
         ...state,
         sessions: [...state.sessions, sessionRecord],
@@ -622,13 +646,17 @@ function reducer(state, action) {
             id: state.nextPlayerId,
           },
         ],
-        sessions: state.sessions.map(session => ({
-          ...session,
-          players: [...session.players, createSessionPlayer({
-            ...action.payload,
-            id: state.nextPlayerId,
-          })],
-        })),
+        sessions: state.sessions.map(session =>
+          session.id === state.currentSessionId
+            ? {
+                ...session,
+                players: [...session.players, createSessionPlayer({
+                  ...action.payload,
+                  id: state.nextPlayerId,
+                })],
+              }
+            : session
+        ),
         nextPlayerId: state.nextPlayerId + 1,
       }
 
@@ -853,7 +881,7 @@ function reducer(state, action) {
 }
 
 export function SessionProvider({ children }) {
-  const { token, isAuthenticated } = useAuth()
+  const { token, isAuthenticated, user } = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   // Load from backend whenever auth state changes
@@ -863,7 +891,12 @@ export function SessionProvider({ children }) {
       return
     }
     loadAll()
-  }, [isAuthenticated, token])
+  }, [isAuthenticated, token, user?.id])
+
+  useEffect(() => {
+    if (!isAuthenticated || !token || !state.currentSessionId) return
+    storeSelectedSessionId(user?.id, state.currentSessionId)
+  }, [isAuthenticated, token, user?.id, state.currentSessionId])
 
   async function loadAll() {
     try {
@@ -878,12 +911,16 @@ export function SessionProvider({ children }) {
       }))
       const maxSession = Math.max(0, ...adapted.map(s => s.id))
       const maxPlayer  = Math.max(0, ...players.map(p => p.id))
+      const storedSessionId = readStoredSelectedSessionId(user?.id)
+      const currentSessionId = adapted.some(session => session.id === storedSessionId)
+        ? storedSessionId
+        : adapted[0]?.id ?? null
       dispatch({
         type: 'LOAD_STATE',
         payload: {
           sessions: adapted,
           playerLibrary: library,
-          currentSessionId: adapted.length > 0 ? adapted[0].id : null,
+          currentSessionId,
           nextSessionId: maxSession + 1,
           nextPlayerId:  maxPlayer  + 1,
           error: null,
