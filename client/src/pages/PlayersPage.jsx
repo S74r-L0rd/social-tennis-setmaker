@@ -28,6 +28,18 @@ function getGameModeDetails(gameMode) {
   return GAME_MODE_DETAILS[gameMode] ?? GAME_MODE_DETAILS.flexible
 }
 
+function playerIsInRoundMatch(round, playerId) {
+  return (round?.matches ?? []).some(match =>
+    (match.teams ?? []).some(team =>
+      (team ?? []).some(player => player.id === playerId)
+    )
+  )
+}
+
+function getMatchedRoundCount(rounds = [], playerId) {
+  return (rounds ?? []).filter(round => playerIsInRoundMatch(round, playerId)).length
+}
+
 export default function PlayersPage() {
   const { state, addPlayer, updatePlayer, generateRoundFromPlayers, clearError } = useSession()
   const navigate = useNavigate()
@@ -38,6 +50,7 @@ export default function PlayersPage() {
   const [generating, setGenerating] = useState(false)
   const [generationWarning, setGenerationWarning] = useState(null)
   const [generationAttempted, setGenerationAttempted] = useState(false)
+  const [roundQuotaWarning, setRoundQuotaWarning] = useState(null)
 
   useEffect(() => { clearError() }, [])
 
@@ -88,11 +101,23 @@ export default function PlayersPage() {
 
   async function handleSubmitPlayer(data) {
     if (editingPlayer) {
+      const matchedRoundCount = getMatchedRoundCount(state.rounds, editingPlayer.id)
+      if (Number(data.plannedRounds) < matchedRoundCount) {
+        setRoundQuotaWarning({ player: editingPlayer, data, matchedRoundCount })
+        return
+      }
       await updatePlayer(editingPlayer.id, data)
       setEditingPlayerId(null)
       return
     }
     await handleAddPlayer(data)
+  }
+
+  async function confirmLowerRoundQuota() {
+    if (!roundQuotaWarning?.player) return
+    await updatePlayer(roundQuotaWarning.player.id, roundQuotaWarning.data)
+    setEditingPlayerId(null)
+    setRoundQuotaWarning(null)
   }
 
   async function handleGenerate() {
@@ -144,6 +169,38 @@ export default function PlayersPage() {
             className="w-full rounded-xl bg-coral-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-coral-600"
           >
             Review Players
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  const roundQuotaWarningElement = roundQuotaWarning ? (
+    <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center bg-green-950/45 px-4 py-6 backdrop-blur-sm sm:px-6">
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
+        <div className="border-b border-amber-100 bg-amber-50 px-5 py-4 sm:px-6">
+          <h2 className="text-lg font-black text-green-900 sm:text-xl">Lower rounds to play?</h2>
+          <p className="mt-1 text-sm font-bold text-amber-600">Existing scheduled rounds may be affected</p>
+        </div>
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          <p className="text-sm leading-relaxed text-gray-600">
+            {roundQuotaWarning.player.name} is already scheduled in {roundQuotaWarning.matchedRoundCount} match round{roundQuotaWarning.matchedRoundCount === 1 ? '' : 's'}. Saving {roundQuotaWarning.data.plannedRounds} round{roundQuotaWarning.data.plannedRounds === 1 ? '' : 's'} to play will leave the existing schedule above their new target. Clear or regenerate the schedule if you want the quota to match future rounds.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-gray-100 bg-gray-50 px-5 py-4 sm:flex-row sm:px-6">
+          <button
+            type="button"
+            onClick={() => setRoundQuotaWarning(null)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirmLowerRoundQuota}
+            className="w-full rounded-xl bg-coral-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-coral-600"
+          >
+            Save Anyway
           </button>
         </div>
       </div>
@@ -320,6 +377,7 @@ export default function PlayersPage() {
       </div>
     </div>
     {generationWarningElement ? createPortal(generationWarningElement, document.body) : null}
+    {roundQuotaWarningElement ? createPortal(roundQuotaWarningElement, document.body) : null}
     </>
   )
 }

@@ -333,7 +333,7 @@ export default function ProfilePage() {
                 <h2 className="mt-2 text-lg font-black text-green-950">Manage players</h2>
                 <p className="mt-2 text-sm leading-relaxed text-stone-500">View and manage the players in your club.</p>
               </div>
-              <button type="button" onClick={() => navigate('/players')}
+              <button type="button" onClick={() => navigate('/manage-players')}
                 className="shrink-0 self-start rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-black text-green-900 shadow-sm transition-all duration-200 hover:bg-stone-100">
                 Manage Players
               </button>
