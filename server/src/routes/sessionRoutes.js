@@ -135,18 +135,55 @@ router.put("/:id", requireAuth, async (req, res) => {
       matchDurationMinutes, breakIntervalMinutes, courtCount,
       gameMode, ratingMode, status, isBroadcasting, selectedBroadcastRoundNumber,
     } = req.body;
+
     const updates = {};
-    if (name !== undefined)                 updates.name = name;
-    if (sessionDate !== undefined)          updates.sessionDate = sessionDate;
-    if (sessionPeriod !== undefined)        updates.sessionPeriod = sessionPeriod;
-    if (startDateTime !== undefined)        updates.startDateTime = startDateTime;
-    if (matchDurationMinutes !== undefined) updates.matchDurationMinutes = matchDurationMinutes;
-    if (breakIntervalMinutes !== undefined) updates.breakIntervalMinutes = breakIntervalMinutes;
-    if (courtCount !== undefined)           updates.courtCount = courtCount;
-    if (gameMode !== undefined)             updates.gameMode = gameMode;
-    if (ratingMode !== undefined)           updates.ratingMode = ratingMode;
-    if (status !== undefined)               updates.status = status;
-    if (isBroadcasting !== undefined)       updates.isBroadcasting = Boolean(isBroadcasting);
+
+    if (name !== undefined) {
+      updates.name = typeof name === "string" ? name.trim() : name;
+    }
+
+    if (sessionDate !== undefined) {
+      updates.sessionDate = toDateOrNull(sessionDate);
+    }
+
+    if (sessionPeriod !== undefined) {
+      updates.sessionPeriod = sessionPeriod || null;
+    }
+
+    if (startDateTime !== undefined) {
+      updates.startDateTime = toDateOrNull(startDateTime);
+    }
+
+    if (matchDurationMinutes !== undefined) {
+      updates.matchDurationMinutes =
+        matchDurationMinutes != null ? Number(matchDurationMinutes) : null;
+    }
+
+    if (breakIntervalMinutes !== undefined) {
+      updates.breakIntervalMinutes =
+        breakIntervalMinutes != null ? Number(breakIntervalMinutes) : null;
+    }
+
+    if (courtCount !== undefined) {
+      updates.courtCount = courtCount != null ? Number(courtCount) : null;
+    }
+
+    if (gameMode !== undefined) {
+      updates.gameMode = gameMode || null;
+    }
+
+    if (ratingMode !== undefined) {
+      updates.ratingMode = ratingMode || null;
+    }
+
+    if (status !== undefined) {
+      updates.status = status;
+    }
+
+    if (isBroadcasting !== undefined) {
+      updates.isBroadcasting = Boolean(isBroadcasting);
+    }
+
     if (selectedBroadcastRoundNumber !== undefined) {
       updates.selectedBroadcastRoundNumber = selectedBroadcastRoundNumber === null
         ? null
