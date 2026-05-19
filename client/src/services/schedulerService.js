@@ -1,13 +1,20 @@
-export async function generateSchedule(players, courts, history) {
-  const response = await fetch("http://localhost:5001/api/schedule/generate", {
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:5001";
+
+export async function generateSchedule(players, courts, history, token, config = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${BASE}/api/schedule/generate`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       players,
       courts,
       history,
+      config,
     }),
   });
 

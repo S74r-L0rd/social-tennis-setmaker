@@ -54,6 +54,60 @@ function emptyHistory() {
   console.log("Test 1 passed: basic generation");
 })();
 
+(function testMixedDoublesFormat() {
+  const players = createPlayers(8).map((player, index) => ({
+    ...player,
+    gender: index < 4 ? "male" : "female",
+  }));
+  const courts = ["Court 1", "Court 2"];
+  const history = emptyHistory();
+
+  const result = generateRound(players, courts, history, { gameMode: "mixed" });
+
+  assert.strictEqual(result.matches.length, 2);
+  for (const match of result.matches) {
+    for (const team of match.teams) {
+      const genders = team.map((player) => player.gender).sort();
+      assert.deepStrictEqual(genders, ["female", "male"]);
+    }
+  }
+  console.log("Test 1a passed: mixed doubles format");
+})();
+
+(function testSameGenderDoublesFormat() {
+  const players = createPlayers(8).map((player, index) => ({
+    ...player,
+    gender: index < 4 ? "male" : "female",
+  }));
+  const courts = ["Court 1", "Court 2"];
+  const history = emptyHistory();
+
+  const result = generateRound(players, courts, history, { gameMode: "same_gender" });
+
+  assert.strictEqual(result.matches.length, 2);
+  for (const match of result.matches) {
+    for (const team of match.teams) {
+      assert.strictEqual(team[0].gender, team[1].gender);
+    }
+  }
+  console.log("Test 1b passed: same gender doubles format");
+})();
+
+(function testSameGenderDoublesRejectsMixedGenderMatch() {
+  const players = createPlayers(4).map((player, index) => ({
+    ...player,
+    gender: index < 2 ? "male" : "female",
+  }));
+  const courts = ["Court 1"];
+  const history = emptyHistory();
+
+  assert.throws(
+    () => generateRound(players, courts, history, { gameMode: "same_gender" }),
+    /Same gender doubles cannot be formed/
+  );
+  console.log("Test 1c passed: same gender doubles rejects men vs women match");
+})();
+
 /**
  * Test 2:
  * Verifies sit-out fairness behaviour.

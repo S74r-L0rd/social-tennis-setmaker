@@ -33,6 +33,96 @@ function makePairKey(a, b) {
   return [a, b].sort((x, y) => x - y).join("-");
 }
 
+function normaliseGender(gender) {
+  const value = String(gender || "").trim().toLowerCase();
+  if (value === "m" || value === "male" || value === "man" || value === "men") return "male";
+  if (value === "f" || value === "female" || value === "woman" || value === "women") return "female";
+  return null;
+}
+
+function normaliseGameMode(gameMode) {
+  return ["mixed", "same_gender"].includes(gameMode) ? gameMode : "flexible";
+}
+
+function isMixedTeam(team) {
+  const genders = team.map((player) => normaliseGender(player.gender));
+  return genders.includes("male") && genders.includes("female");
+}
+
+function isSameGenderTeam(team) {
+  const genders = team.map((player) => normaliseGender(player.gender));
+  return genders[0] && genders[0] === genders[1];
+}
+
+function isValidTeamForMode(team, gameMode) {
+  if (gameMode === "mixed") return isMixedTeam(team);
+  if (gameMode === "same_gender") return isSameGenderTeam(team);
+  return true;
+}
+
+function sumSitOutPriority(players) {
+  return players.reduce((total, player) => total + player.sitOutCount, 0);
+}
+
+function formatGameMode(gameMode) {
+  if (gameMode === "mixed") return "mixed doubles";
+  if (gameMode === "same_gender") return "same gender doubles";
+  return "doubles";
+}
+
+function selectFormattedGroups(sortedPlayers, courts, gameMode) {
+  const courtLimit = courts.length;
+
+  if (gameMode === "flexible") {
+    const selectedPlayers = shuffle(sortedPlayers.slice(0, courtLimit * 4));
+    const groups = [];
+
+    for (let i = 0; i < selectedPlayers.length; i += 4) {
+      const group = selectedPlayers.slice(i, i + 4);
+      if (group.length === 4) groups.push(group);
+    }
+
+    const groupedIds = new Set(groups.flat().map((player) => player.id));
+    return {
+      groups,
+      sitOuts: sortedPlayers.filter((player) => !groupedIds.has(player.id)),
+    };
+  }
+
+  const men = sortedPlayers.filter((player) => normaliseGender(player.gender) === "male");
+  const women = sortedPlayers.filter((player) => normaliseGender(player.gender) === "female");
+  const unknown = sortedPlayers.filter((player) => !normaliseGender(player.gender));
+  const groups = [];
+
+  if (gameMode === "mixed") {
+    while (groups.length < courtLimit && men.length >= 2 && women.length >= 2) {
+      groups.push([...men.splice(0, 2), ...women.splice(0, 2)]);
+    }
+  }
+
+  if (gameMode === "same_gender") {
+    while (groups.length < courtLimit) {
+      const candidates = [];
+      if (men.length >= 4) candidates.push({ type: "men4", players: men.slice(0, 4) });
+      if (women.length >= 4) candidates.push({ type: "women4", players: women.slice(0, 4) });
+
+      if (candidates.length === 0) break;
+
+      candidates.sort((a, b) => sumSitOutPriority(b.players) - sumSitOutPriority(a.players));
+      const best = candidates[0];
+      groups.push(best.players);
+
+      if (best.type === "men4") men.splice(0, 4);
+      else women.splice(0, 4);
+    }
+  }
+
+  return {
+    groups,
+    sitOuts: [...men, ...women, ...unknown],
+  };
+}
+
 /**
  * Evaluates all valid doubles splits for a group of 4 players
  * and returns the best-scoring arrangement.
@@ -58,8 +148,9 @@ function makePairKey(a, b) {
  * @param {Object.<string, number>} history.opponent - Map of opponent pair frequencies.
  * @returns {{score: number, teams: Array<Array<Object>>}} Best split and its score.
  */
-function scoreGrouping(group, history) {
+function scoreGrouping(group, history, config = {}) {
   const [A, B, C, D] = group;
+  const gameMode = normaliseGameMode(config.gameMode);
 
   // All possible splits of 4 players into 2 doubles teams
   const splits = [
@@ -71,6 +162,10 @@ function scoreGrouping(group, history) {
   let best = null;
 
   for (const [team1, team2] of splits) {
+    if (!isValidTeamForMode(team1, gameMode) || !isValidTeamForMode(team2, gameMode)) {
+      continue;
+    }
+
     let score = 0;
 
     const team1Rating = team1[0].rating + team1[1].rating;
@@ -103,6 +198,10 @@ function scoreGrouping(group, history) {
     ) {
       best = { score, teams: [team1, team2] };
     }
+  }
+
+  if (!best) {
+    throw new Error(`Unable to form a valid ${formatGameMode(gameMode)} match from the selected players.`);
   }
 
   return best;
@@ -201,10 +300,7 @@ function validateGenerateRoundInput(players, courts, history) {
  */
 function generateRound(players, courts, history, config = {}) {
   validateGenerateRoundInput(players, courts, history);
-
-  // Maximum number of players that can be scheduled this round.
-  // Each court supports exactly one doubles match = 4 players.
-  const maxPlayers = courts.length * 4;
+  const gameMode = normaliseGameMode(config.gameMode);
 
   // Players with fewer sit-outs are lower priority to play this round.
   // Players who have already sat out more often should be given preference.
@@ -218,28 +314,23 @@ function generateRound(players, courts, history, config = {}) {
     return Math.random() - 0.5;
   });
 
-  // Players within capacity are selected to play this round.
-  const selectedPlayers = sortedPlayers.slice(0, maxPlayers);
+  const { groups, sitOuts } = selectFormattedGroups(sortedPlayers, courts, gameMode);
 
-  // Any remaining players must sit out.
-  const sitOuts = sortedPlayers.slice(maxPlayers);
-
-  // Shuffle selected players before grouping so that the same order
-  // does not always generate the same match blocks.
-  const shuffledPlayers = shuffle(selectedPlayers);
-  const groups = [];
-
-  // Create groups of exactly 4 players.
-  for (let i = 0; i < shuffledPlayers.length; i += 4) {
-    const group = shuffledPlayers.slice(i, i + 4);
-    if (group.length === 4) {
-      groups.push(group);
+  if (groups.length === 0) {
+    if (gameMode === "mixed") {
+      throw new Error("Mixed doubles cannot be formed because there are not enough players of each gender. You need at least two men and two women for each mixed doubles match.");
     }
+
+    if (gameMode === "same_gender") {
+      throw new Error("Same gender doubles cannot be formed because there are not enough players of the same gender. You need at least four men or four women for each same gender doubles match.");
+    }
+
+    throw new Error("Not enough eligible players to form a doubles match.");
   }
 
   // For each group, find the best doubles split and assign a court.
   const matches = groups.map((group, index) => {
-    const best = scoreGrouping(group, history);
+    const best = scoreGrouping(shuffle(group), history, { gameMode });
 
     return {
       court: courts[index],

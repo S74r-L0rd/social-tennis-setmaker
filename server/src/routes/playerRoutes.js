@@ -3,6 +3,7 @@ const {
   createPlayer,
   getAllPlayers,
   getPlayerById,
+  getPlayerScheduleUsage,
   updatePlayer,
   deletePlayer,
 } = require("../repositories/playerRepository");
@@ -16,7 +17,7 @@ function isValidId(value) {
 
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { name, rating } = req.body;
+    const { name, gender, rating } = req.body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
@@ -32,7 +33,11 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    const player = await createPlayer(req.body);
+    const player = await createPlayer({
+      name: name.trim(),
+      gender: gender ?? null,
+      rating: rating ?? 0,
+    }, req.user.userId);
 
     res.status(201).json({
       success: true,
@@ -46,9 +51,9 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
-    const players = await getAllPlayers();
+    const players = await getAllPlayers(req.user.userId);
 
     res.status(200).json({
       success: true,
@@ -62,7 +67,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireAuth, async (req, res) => {
   try {
     const playerId = Number(req.params.id);
 
@@ -73,7 +78,7 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const player = await getPlayerById(playerId);
+    const player = await getPlayerById(playerId, req.user.userId);
 
     if (!player) {
       return res.status(404).json({
@@ -105,7 +110,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const existingPlayer = await getPlayerById(playerId);
+    const existingPlayer = await getPlayerById(playerId, req.user.userId);
 
     if (!existingPlayer) {
       return res.status(404).json({
@@ -155,12 +160,20 @@ router.delete("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const existingPlayer = await getPlayerById(playerId);
+    const existingPlayer = await getPlayerById(playerId, req.user.userId);
 
     if (!existingPlayer) {
       return res.status(404).json({
         success: false,
         error: "Player not found.",
+      });
+    }
+
+    const usage = await getPlayerScheduleUsage(playerId);
+    if (usage.matchAssignments > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "This player is already scheduled in a match. Clear the schedule before deleting them.",
       });
     }
 

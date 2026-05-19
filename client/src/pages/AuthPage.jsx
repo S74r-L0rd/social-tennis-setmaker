@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const LOGIN_EMPTY = { email: '', password: '' }
@@ -22,8 +22,9 @@ function passwordChecks(password) {
 
 export default function AuthPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { login, register } = useAuth()
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState(searchParams.get('mode') === 'signup' ? 'signup' : 'login')
   const [loginForm, setLoginForm] = useState(LOGIN_EMPTY)
   const [signupForm, setSignupForm] = useState(SIGNUP_EMPTY)
   const [loginErrors, setLoginErrors] = useState({})
@@ -110,7 +111,7 @@ export default function AuthPage() {
               <span aria-hidden="true">🎾</span>
               SetMaker Access
             </div>
-            <h1 className="mt-4 text-4xl font-black leading-tight">Manage sessions with one organizer account.</h1>
+            <h1 className="mt-4 text-4xl font-black leading-tight">Manage sessions with one organiser account.</h1>
             <p className="mt-4 text-sm leading-relaxed text-green-100">
               Sign in to continue managing schedules, or create a new club account to get started.
             </p>

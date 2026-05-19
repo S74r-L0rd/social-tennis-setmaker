@@ -6,6 +6,8 @@ const {
   updateSessionPlayer,
   removeSessionPlayer,
 } = require("../repositories/sessionPlayerRepository");
+const { getSessionById } = require("../repositories/sessionRepository");
+const { getPlayerById } = require("../repositories/playerRepository");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
@@ -26,13 +28,10 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    if (
-      plannedRounds !== undefined &&
-      (!Number.isInteger(plannedRounds) || plannedRounds < 0)
-    ) {
+    if (!Number.isInteger(plannedRounds) || plannedRounds < 1) {
       return res.status(400).json({
         success: false,
-        error: "plannedRounds must be a non-negative integer.",
+        error: "plannedRounds must be a positive integer.",
       });
     }
 
@@ -66,6 +65,22 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found.",
+      });
+    }
+
+    const player = await getPlayerById(playerId, req.user.userId);
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        error: "Player not found.",
+      });
+    }
+
     const sessionPlayer = await addPlayerToSession(req.body);
 
     res.status(201).json({
@@ -87,7 +102,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:sessionId", async (req, res) => {
+router.get("/:sessionId", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.sessionId);
 
@@ -95,6 +110,14 @@ router.get("/:sessionId", async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Invalid session id.",
+      });
+    }
+
+    const session = await getSessionById(sessionId, req.user.userId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found.",
       });
     }
 
@@ -132,13 +155,20 @@ router.put("/:id", requireAuth, async (req, res) => {
       });
     }
 
+    if (existingSessionPlayer.session?.createdById !== req.user.userId) {
+      return res.status(404).json({
+        success: false,
+        error: "Session player not found.",
+      });
+    }
+
     if (
       req.body.plannedRounds !== undefined &&
-      (!Number.isInteger(req.body.plannedRounds) || req.body.plannedRounds < 0)
+      (!Number.isInteger(req.body.plannedRounds) || req.body.plannedRounds < 1)
     ) {
       return res.status(400).json({
         success: false,
-        error: "plannedRounds must be a non-negative integer.",
+        error: "plannedRounds must be a positive integer.",
       });
     }
 
@@ -200,6 +230,13 @@ router.delete("/:id", requireAuth, async (req, res) => {
     const existingSessionPlayer = await getSessionPlayerById(sessionPlayerId);
 
     if (!existingSessionPlayer) {
+      return res.status(404).json({
+        success: false,
+        error: "Session player not found.",
+      });
+    }
+
+    if (existingSessionPlayer.session?.createdById !== req.user.userId) {
       return res.status(404).json({
         success: false,
         error: "Session player not found.",

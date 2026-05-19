@@ -16,6 +16,9 @@ async function getCourtsBySessionId(sessionId) {
 async function getCourtById(id) {
   return prisma.sessionCourt.findUnique({
     where: { id },
+    include: {
+      session: true,
+    },
   });
 }
 

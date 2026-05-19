@@ -16,6 +16,9 @@ model User {
   clubSuburb   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  sessions     Session[]
+  players      Player[]
 }
 
 enum SessionStatus {
@@ -33,6 +36,7 @@ enum PlayerStatus {
 
 model Session {
   id                       Int             @id @default(autoincrement())
+  createdById              Int?
   name                     String
   sessionDate              DateTime?
   sessionPeriod            String?
@@ -43,16 +47,22 @@ model Session {
   gameMode                 String?
   ratingMode               String?
   status                   SessionStatus   @default(DRAFT)
+  isBroadcasting           Boolean         @default(false)
+  selectedBroadcastRoundNumber Int?
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 
   courts                   SessionCourt[]
   sessionPlayers           SessionPlayer[]
   rounds                   Round[]
+  createdBy                User?           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
 }
 
 model Player {
   id                       Int             @id @default(autoincrement())
+  createdById              Int?
   name                     String
   gender                   String?
   rating                   Int             @default(0)
@@ -61,6 +71,9 @@ model Player {
 
   sessionPlayers           SessionPlayer[]
   matchAssignments         MatchAssignment[]
+  createdBy                User?           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
 }
 
 model SessionPlayer {

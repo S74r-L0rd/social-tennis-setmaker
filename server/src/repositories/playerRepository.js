@@ -1,23 +1,44 @@
 const prisma = require("../lib/prisma");
 
-async function createPlayer(data) {
+async function createPlayer(data, userId) {
   return prisma.player.create({
-    data,
+    data: {
+      ...data,
+      createdById: userId,
+    },
   });
 }
 
-async function getAllPlayers() {
+async function getAllPlayers(userId) {
   return prisma.player.findMany({
+    where: { createdById: userId },
     orderBy: {
       name: "asc",
     },
   });
 }
 
-async function getPlayerById(id) {
-  return prisma.player.findUnique({
-    where: { id },
+async function getPlayerById(id, userId) {
+  return prisma.player.findFirst({
+    where: { id, createdById: userId },
   });
+}
+
+async function getPlayerScheduleUsage(id) {
+  const [matchAssignments, sitOuts] = await Promise.all([
+    prisma.matchAssignment.count({
+      where: { playerId: id },
+    }),
+    prisma.roundSitOut.count({
+      where: {
+        sessionPlayer: {
+          playerId: id,
+        },
+      },
+    }),
+  ]);
+
+  return { matchAssignments, sitOuts };
 }
 
 async function updatePlayer(id, data) {
@@ -37,6 +58,7 @@ module.exports = {
   createPlayer,
   getAllPlayers,
   getPlayerById,
+  getPlayerScheduleUsage,
   updatePlayer,
   deletePlayer,
 };

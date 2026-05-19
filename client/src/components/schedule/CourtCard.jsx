@@ -5,7 +5,7 @@ function teamRating(team, getPlayerById) {
   return team.reduce((sum, p) => sum + (getPlayerById(p.id)?.rating ?? p.rating ?? 0), 0)
 }
 
-export default function CourtCard({ match, isEditable, roundStartLabel = null, showRoundStart = false }) {
+export default function CourtCard({ match, isEditable, roundStatusLabel = null, showRoundStart = false }) {
   const { getPlayerById } = useSession()
   const [team1, team2] = match.teams
   const r1 = teamRating(team1, getPlayerById)
@@ -18,9 +18,9 @@ export default function CourtCard({ match, isEditable, roundStartLabel = null, s
       <div className="flex items-center justify-between px-6 py-4 bg-green-900">
         <span className="text-sm font-black text-white uppercase tracking-widest">{match.court}</span>
         <div className="flex items-center gap-3">
-          {showRoundStart && roundStartLabel && (
+          {showRoundStart && roundStatusLabel && (
             <span className="text-xs font-black tracking-wide text-white">
-              Starts {roundStartLabel}
+              {roundStatusLabel}
             </span>
           )}
           {imbalanced ? (

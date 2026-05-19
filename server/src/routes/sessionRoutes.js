@@ -47,7 +47,7 @@ router.post("/", requireAuth, async (req, res) => {
       ratingMode:            ratingMode  || null,
     };
 
-    const session = await createSession(data);
+    const session = await createSession(data, req.user.userId);
 
     res.status(201).json({
       success: true,
@@ -62,9 +62,9 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
-    const sessions = await getAllSessions();
+    const sessions = await getAllSessions(req.user.userId);
 
     res.status(200).json({
       success: true,
@@ -78,7 +78,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireAuth, async (req, res) => {
   try {
     const sessionId = Number(req.params.id);
 
@@ -89,7 +89,7 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    const session = await getSessionById(sessionId);
+    const session = await getSessionById(sessionId, req.user.userId);
 
     if (!session) {
       return res.status(404).json({
@@ -121,7 +121,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const existingSession = await getSessionById(sessionId);
+    const existingSession = await getSessionById(sessionId, req.user.userId);
 
     if (!existingSession) {
       return res.status(404).json({
@@ -133,19 +133,62 @@ router.put("/:id", requireAuth, async (req, res) => {
     const {
       name, sessionDate, sessionPeriod, startDateTime,
       matchDurationMinutes, breakIntervalMinutes, courtCount,
-      gameMode, ratingMode, status,
+      gameMode, ratingMode, status, isBroadcasting, selectedBroadcastRoundNumber,
     } = req.body;
+
     const updates = {};
-    if (name !== undefined)                 updates.name = name;
-    if (sessionDate !== undefined)          updates.sessionDate = sessionDate;
-    if (sessionPeriod !== undefined)        updates.sessionPeriod = sessionPeriod;
-    if (startDateTime !== undefined)        updates.startDateTime = startDateTime;
-    if (matchDurationMinutes !== undefined) updates.matchDurationMinutes = matchDurationMinutes;
-    if (breakIntervalMinutes !== undefined) updates.breakIntervalMinutes = breakIntervalMinutes;
-    if (courtCount !== undefined)           updates.courtCount = courtCount;
-    if (gameMode !== undefined)             updates.gameMode = gameMode;
-    if (ratingMode !== undefined)           updates.ratingMode = ratingMode;
-    if (status !== undefined)               updates.status = status;
+
+    if (name !== undefined) {
+      updates.name = typeof name === "string" ? name.trim() : name;
+    }
+
+    if (sessionDate !== undefined) {
+      updates.sessionDate = toDateOrNull(sessionDate);
+    }
+
+    if (sessionPeriod !== undefined) {
+      updates.sessionPeriod = sessionPeriod || null;
+    }
+
+    if (startDateTime !== undefined) {
+      updates.startDateTime = toDateOrNull(startDateTime);
+    }
+
+    if (matchDurationMinutes !== undefined) {
+      updates.matchDurationMinutes =
+        matchDurationMinutes != null ? Number(matchDurationMinutes) : null;
+    }
+
+    if (breakIntervalMinutes !== undefined) {
+      updates.breakIntervalMinutes =
+        breakIntervalMinutes != null ? Number(breakIntervalMinutes) : null;
+    }
+
+    if (courtCount !== undefined) {
+      updates.courtCount = courtCount != null ? Number(courtCount) : null;
+    }
+
+    if (gameMode !== undefined) {
+      updates.gameMode = gameMode || null;
+    }
+
+    if (ratingMode !== undefined) {
+      updates.ratingMode = ratingMode || null;
+    }
+
+    if (status !== undefined) {
+      updates.status = status;
+    }
+
+    if (isBroadcasting !== undefined) {
+      updates.isBroadcasting = Boolean(isBroadcasting);
+    }
+
+    if (selectedBroadcastRoundNumber !== undefined) {
+      updates.selectedBroadcastRoundNumber = selectedBroadcastRoundNumber === null
+        ? null
+        : Number(selectedBroadcastRoundNumber);
+    }
 
     const session = await updateSession(sessionId, updates);
 
@@ -154,6 +197,7 @@ router.put("/:id", requireAuth, async (req, res) => {
       data: session,
     });
   } catch (error) {
+    console.error("Update session error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to update session.",
@@ -172,7 +216,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const existingSession = await getSessionById(sessionId);
+    const existingSession = await getSessionById(sessionId, req.user.userId);
 
     if (!existingSession) {
       return res.status(404).json({
@@ -205,7 +249,7 @@ router.post("/:id/activate", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid session id." });
     }
 
-    const existing = await getSessionById(sessionId);
+    const existing = await getSessionById(sessionId, req.user.userId);
     if (!existing) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -238,7 +282,7 @@ router.post("/:id/complete", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid session id." });
     }
 
-    const existing = await getSessionById(sessionId);
+    const existing = await getSessionById(sessionId, req.user.userId);
     if (!existing) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }
@@ -267,7 +311,7 @@ router.post("/:id/cancel", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid session id." });
     }
 
-    const existing = await getSessionById(sessionId);
+    const existing = await getSessionById(sessionId, req.user.userId);
     if (!existing) {
       return res.status(404).json({ success: false, error: "Session not found." });
     }

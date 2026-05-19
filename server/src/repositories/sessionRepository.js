@@ -1,73 +1,73 @@
 const prisma = require("../lib/prisma");
 
-async function createSession(data) {
-  return prisma.session.create({
-    data,
+const sessionInclude = {
+  courts: true,
+  sessionPlayers: {
     include: {
-      courts: true,
-      sessionPlayers: {
+      player: true,
+    },
+  },
+  rounds: {
+    orderBy: {
+      roundNumber: "asc",
+    },
+    include: {
+      matches: {
+        orderBy: {
+          matchOrder: "asc",
+        },
         include: {
-          player: true,
+          assignments: {
+            orderBy: [
+              { teamNumber: "asc" },
+              { positionInTeam: "asc" },
+            ],
+            include: {
+              player: true,
+            },
+          },
         },
       },
-      rounds: true,
+      sitOuts: {
+        include: {
+          sessionPlayer: {
+            include: {
+              player: true,
+            },
+          },
+        },
+      },
     },
+  },
+};
+
+async function createSession(data, userId) {
+  return prisma.session.create({
+    data: {
+      ...data,
+      createdById: userId,
+    },
+    include: sessionInclude,
   });
 }
 
-async function getAllSessions() {
+async function getAllSessions(userId) {
   return prisma.session.findMany({
+    where: { createdById: userId },
     orderBy: {
       createdAt: "desc",
     },
-    include: {
-      courts: true,
-      sessionPlayers: {
-        include: {
-          player: true,
-        },
-      },
-      rounds: true,
-    },
+    include: sessionInclude,
   });
 }
 
-async function getSessionById(id) {
+async function getSessionById(id, userId) {
   return prisma.session.findUnique({
     where: { id },
-    include: {
-      courts: true,
-      sessionPlayers: {
-        include: {
-          player: true,
-        },
-      },
-      rounds: {
-        include: {
-          matches: {
-            include: {
-              assignments: {
-                include: {
-                  player: true,
-                },
-              },
-            },
-          },
-          sitOuts: {
-            include: {
-              sessionPlayer: {
-                include: {
-                  player: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          roundNumber: "asc",
-        },
-      },
-    },
+    include: sessionInclude,
+  }).then((session) => {
+    if (!session || session.createdById !== userId) return null;
+    return session;
   });
 }
 
@@ -75,15 +75,7 @@ async function updateSession(id, data) {
   return prisma.session.update({
     where: { id },
     data,
-    include: {
-      courts: true,
-      sessionPlayers: {
-        include: {
-          player: true,
-        },
-      },
-      rounds: true,
-    },
+    include: sessionInclude,
   });
 }
 

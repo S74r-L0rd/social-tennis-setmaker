@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
-import { getSessionScheduleIssue } from '../utils/roundSchedule'
+import { getRoundSessionState, getSessionScheduleIssue } from '../utils/roundSchedule'
 import { useAuth } from './AuthContext'
 import { api } from '../services/api'
 
 const SessionContext = createContext(null)
+const SELECTED_SESSION_STORAGE_KEY = 'stm-current-session-id'
 
 const initialState = {
   sessions: [],
@@ -12,6 +13,31 @@ const initialState = {
   nextSessionId: 1,
   nextPlayerId: 1,
   error: null,
+  isLoading: false,
+  hasLoaded: false,
+}
+
+function getSelectedSessionStorageKey(userId) {
+  return userId ? `${SELECTED_SESSION_STORAGE_KEY}:${userId}` : SELECTED_SESSION_STORAGE_KEY
+}
+
+function readStoredSelectedSessionId(userId) {
+  try {
+    const value = localStorage.getItem(getSelectedSessionStorageKey(userId))
+    const sessionId = Number(value)
+    return Number.isInteger(sessionId) && sessionId > 0 ? sessionId : null
+  } catch {
+    return null
+  }
+}
+
+function storeSelectedSessionId(userId, sessionId) {
+  try {
+    if (!sessionId) return
+    localStorage.setItem(getSelectedSessionStorageKey(userId), String(sessionId))
+  } catch {
+    // Remembering the selected session is a convenience only.
+  }
 }
 
 // ─── Backend → frontend adapters ─────────────────────────────────────────────
@@ -93,8 +119,8 @@ function adaptBackendSession(s) {
     players: adaptSessionPlayers(s.sessionPlayers ?? []),
     rounds,
     history: { partner: {}, opponent: {} },
-    isBroadcasting: false,
-    selectedBroadcastRoundNumber: rounds.length > 0 ? rounds[rounds.length - 1].roundNumber : null,
+    isBroadcasting: Boolean(s.isBroadcasting),
+    selectedBroadcastRoundNumber: s.selectedBroadcastRoundNumber ?? (rounds.length > 0 ? rounds[rounds.length - 1].roundNumber : null),
   }
 }
 
@@ -128,12 +154,12 @@ function syncSessionPlayersWithLibrary(sessionPlayers = [], playerLibrary = []) 
   })
 }
 
-function createEmptySession(config, id, playerLibrary = []) {
+function createEmptySession(config, id) {
   return {
     id,
     session: { ...config },
     createdAt: new Date().toISOString(),
-    players: playerLibrary.map(createSessionPlayer),
+    players: [],
     rounds: [],
     selectedBroadcastRoundNumber: null,
     history: { partner: {}, opponent: {} },
@@ -238,11 +264,24 @@ function getRoundPlayerPool(round) {
     id: player.id,
     rating: player.rating,
     sitOutCount: player.sitOutCount ?? 0,
+    gender: player.gender,
   }))
 }
 
 function getRoundCourts(round) {
   return round.matches.map(match => match.court)
+}
+
+function playerAppearsInScheduledMatch(sessions, playerId) {
+  return sessions.some(session =>
+    (session.rounds ?? []).some(round =>
+      (round.matches ?? []).some(match =>
+        (match.teams ?? []).some(team =>
+          (team ?? []).some(player => player.id === playerId)
+        )
+      )
+    )
+  )
 }
 
 function swapPlayersInRound(round, playerIdA, playerIdB) {
@@ -285,6 +324,17 @@ function swapPlayersInRound(round, playerIdA, playerIdB) {
   setPlayer(posA, playerB)
   setPlayer(posB, playerA)
   return newRound
+}
+
+function getPlayerRoundPosition(round, playerId) {
+  for (const match of round?.matches ?? []) {
+    for (const team of match.teams ?? []) {
+      if ((team ?? []).some(player => player.id === playerId)) return 'match'
+    }
+  }
+
+  if ((round?.sitOuts ?? []).some(player => player.id === playerId)) return 'sitout'
+  return null
 }
 
 function buildPlayerDatabase(sessions, playerLibrary) {
@@ -528,11 +578,14 @@ function migrateLegacyState(saved) {
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'LOAD_START':
+      return { ...state, isLoading: true, error: null }
+
     case 'LOAD_STATE':
-      return action.payload
+      return { ...action.payload, isLoading: false, hasLoaded: true }
 
     case 'SET_SESSION': {
-      const sessionRecord = createEmptySession(action.payload, state.nextSessionId, state.playerLibrary)
+      const sessionRecord = createEmptySession(action.payload, state.nextSessionId)
       return {
         ...state,
         sessions: [...state.sessions, sessionRecord],
@@ -599,13 +652,17 @@ function reducer(state, action) {
             id: state.nextPlayerId,
           },
         ],
-        sessions: state.sessions.map(session => ({
-          ...session,
-          players: [...session.players, createSessionPlayer({
-            ...action.payload,
-            id: state.nextPlayerId,
-          })],
-        })),
+        sessions: state.sessions.map(session =>
+          session.id === state.currentSessionId
+            ? {
+                ...session,
+                players: [...session.players, createSessionPlayer({
+                  ...action.payload,
+                  id: state.nextPlayerId,
+                })],
+              }
+            : session
+        ),
         nextPlayerId: state.nextPlayerId + 1,
       }
 
@@ -624,10 +681,14 @@ function reducer(state, action) {
       }
 
     case 'REMOVE_PLAYER':
-      return updateCurrentSession(state, session => ({
-        ...session,
-        players: session.players.filter(player => player.id !== action.payload),
-      }))
+      return {
+        ...state,
+        playerLibrary: state.playerLibrary.filter(player => player.id !== action.payload),
+        sessions: state.sessions.map(session => ({
+          ...session,
+          players: session.players.filter(player => player.id !== action.payload),
+        })),
+      }
 
     case 'TOGGLE_PLAYER_STATUS':
       return updateCurrentSession(state, session => ({
@@ -635,6 +696,16 @@ function reducer(state, action) {
         players: session.players.map(player =>
           player.id === action.payload
             ? { ...player, status: player.status === 'active' ? 'resting' : 'active' }
+            : player
+        ),
+      }))
+
+    case 'SET_PLAYER_STATUS':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        players: session.players.map(player =>
+          player.id === action.payload.playerId
+            ? { ...player, status: action.payload.status }
             : player
         ),
       }))
@@ -652,6 +723,14 @@ function reducer(state, action) {
     case 'GENERATE_ROUND_FROM_PLAYERS_RESULT':
       return updateCurrentSession(state, session => {
         const nextRound = action.payload
+        if (action.freshSchedule) {
+          return {
+            ...session,
+            rounds: [nextRound],
+            selectedBroadcastRoundNumber: nextRound.roundNumber,
+          }
+        }
+
         const existingRounds = session.rounds.map((round, index) =>
           index === session.rounds.length - 1 ? { ...round, isConfirmed: true } : round
         )
@@ -662,6 +741,13 @@ function reducer(state, action) {
           selectedBroadcastRoundNumber: nextRound.roundNumber,
         }
       })
+
+    case 'SET_ROUNDS':
+      return updateCurrentSession(state, session => ({
+        ...session,
+        rounds: action.payload,
+        selectedBroadcastRoundNumber: action.payload[action.payload.length - 1]?.roundNumber ?? null,
+      }))
 
     case 'SET_NEXT_ROUND':
       return updateCurrentSession(state, session => {
@@ -684,13 +770,43 @@ function reducer(state, action) {
 
     case 'SWAP_PLAYERS':
       return updateCurrentSession(state, session => {
+        const currentRound = session.rounds[action.payload.roundIdx]
+        if (!currentRound) return session
+
         const rounds = [...session.rounds]
-        rounds[action.payload.roundIdx] = swapPlayersInRound(
-          rounds[action.payload.roundIdx],
-          action.payload.playerIdA,
-          action.payload.playerIdB
-        )
-        return { ...session, rounds }
+        rounds[action.payload.roundIdx] = action.payload.round
+          ?? swapPlayersInRound(
+            currentRound,
+            action.payload.playerIdA,
+            action.payload.playerIdB
+          )
+
+        const positionA = getPlayerRoundPosition(currentRound, action.payload.playerIdA)
+        const positionB = getPlayerRoundPosition(currentRound, action.payload.playerIdB)
+        const crossedMatchAndSitOut = [positionA, positionB].includes('match')
+          && [positionA, positionB].includes('sitout')
+
+        if (!crossedMatchAndSitOut) return { ...session, rounds }
+
+        return {
+          ...session,
+          rounds,
+          players: session.players.map(player => {
+            if (player.id === action.payload.playerIdA) {
+              return positionA === 'match'
+                ? { ...player, roundsPlayed: Math.max(0, player.roundsPlayed - 1), sitOutCount: player.sitOutCount + 1 }
+                : { ...player, roundsPlayed: player.roundsPlayed + 1, sitOutCount: Math.max(0, player.sitOutCount - 1) }
+            }
+
+            if (player.id === action.payload.playerIdB) {
+              return positionB === 'match'
+                ? { ...player, roundsPlayed: Math.max(0, player.roundsPlayed - 1), sitOutCount: player.sitOutCount + 1 }
+                : { ...player, roundsPlayed: player.roundsPlayed + 1, sitOutCount: Math.max(0, player.sitOutCount - 1) }
+            }
+
+            return player
+          }),
+        }
       })
 
     case 'RESHUFFLE_ROUND_RESULT':
@@ -741,6 +857,7 @@ function reducer(state, action) {
         rounds: [],
         selectedBroadcastRoundNumber: null,
         history: { partner: {}, opponent: {} },
+        isBroadcasting: false,
       }))
 
     case 'TOGGLE_BROADCAST':
@@ -750,13 +867,13 @@ function reducer(state, action) {
       }))
 
     case 'SET_ERROR':
-      return { ...state, error: action.payload }
+      return { ...state, error: action.payload, isLoading: false, hasLoaded: true }
 
     case 'CLEAR_ERROR':
       return { ...state, error: null }
 
     case 'RESET':
-      return initialState
+      return { ...initialState, hasLoaded: true }
 
     case 'UPDATE_SESSIONS':
       return { ...state, sessions: action.payload }
@@ -796,7 +913,7 @@ function reducer(state, action) {
 }
 
 export function SessionProvider({ children }) {
-  const { token, isAuthenticated } = useAuth()
+  const { token, isAuthenticated, user } = useAuth()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   // Load from backend whenever auth state changes
@@ -806,9 +923,15 @@ export function SessionProvider({ children }) {
       return
     }
     loadAll()
-  }, [isAuthenticated, token])
+  }, [isAuthenticated, token, user?.id])
+
+  useEffect(() => {
+    if (!isAuthenticated || !token || !state.currentSessionId) return
+    storeSelectedSessionId(user?.id, state.currentSessionId)
+  }, [isAuthenticated, token, user?.id, state.currentSessionId])
 
   async function loadAll() {
+    dispatch({ type: 'LOAD_START' })
     try {
       const [sessions, players] = await Promise.all([
         api.getSessions(token),
@@ -821,12 +944,16 @@ export function SessionProvider({ children }) {
       }))
       const maxSession = Math.max(0, ...adapted.map(s => s.id))
       const maxPlayer  = Math.max(0, ...players.map(p => p.id))
+      const storedSessionId = readStoredSelectedSessionId(user?.id)
+      const currentSessionId = adapted.some(session => session.id === storedSessionId)
+        ? storedSessionId
+        : adapted[0]?.id ?? null
       dispatch({
         type: 'LOAD_STATE',
         payload: {
           sessions: adapted,
           playerLibrary: library,
-          currentSessionId: adapted.length > 0 ? adapted[0].id : null,
+          currentSessionId,
           nextSessionId: maxSession + 1,
           nextPlayerId:  maxPlayer  + 1,
           error: null,
@@ -859,10 +986,20 @@ export function SessionProvider({ children }) {
         dispatch({ type: 'SET_ERROR', payload: sessionIssue })
         return false
       }
-      const roundData = await api.generateRound(state.currentSessionId, token)
-      const adaptedRound = adaptBackendRound(roundData)
+      if ((currentSession?.rounds?.length ?? 0) > 0) {
+        await api.clearRounds(state.currentSessionId, token)
+        dispatch({ type: 'CLEAR_SCHEDULE' })
+      }
 
-      dispatch({ type: 'GENERATE_ROUND_FROM_PLAYERS_RESULT', payload: adaptedRound })
+      const roundData = await api.generateRound(state.currentSessionId, token)
+      const persistedRounds = await api.getRounds(state.currentSessionId, token)
+      const adaptedRounds = (Array.isArray(persistedRounds) && persistedRounds.length > 0
+        ? persistedRounds
+        : [roundData]
+      ).map(adaptBackendRound)
+      const adaptedRound = adaptedRounds[adaptedRounds.length - 1]
+
+      dispatch({ type: 'SET_ROUNDS', payload: adaptedRounds })
 
       // Update player stats locally from the round result — avoids a full session
       // reload that can overwrite the correctly adapted round with stale data
@@ -883,7 +1020,7 @@ export function SessionProvider({ children }) {
     try {
       if (!currentSession) {
         dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
-        return
+        return false
       }
       const lastRound = currentSession.rounds[currentSession.rounds.length - 1]
       if (lastRound?._dbId && !lastRound.isConfirmed) {
@@ -899,11 +1036,14 @@ export function SessionProvider({ children }) {
         )
         const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
         dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
+        return true
       } else {
         dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
+        return false
       }
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
+      return false
     }
   }
 
@@ -917,11 +1057,47 @@ export function SessionProvider({ children }) {
       const result = await generateSchedule(
         getRoundPlayerPool(round),
         getRoundCourts(round),
-        cloneHistory(round.historySnapshot ?? currentSession.history)
+        cloneHistory(round.historySnapshot ?? currentSession.history),
+        token,
+        { gameMode: currentSession.gameMode }
       )
       dispatch({ type: 'RESHUFFLE_ROUND_RESULT', payload: { roundIdx, result } })
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
+    }
+  }
+
+  async function swapPlayers(roundIdx, playerIdA, playerIdB) {
+    try {
+      if (!currentSession) return false
+      const round = currentSession.rounds[roundIdx]
+      if (!round) return false
+
+      const roundState = getRoundSessionState(
+        currentSession.session,
+        Number.isInteger(round.roundNumber) ? round.roundNumber : roundIdx + 1,
+        new Date()
+      )
+
+      if (roundState !== 'upcoming') {
+        dispatch({ type: 'SET_ERROR', payload: 'In-progress and completed rounds cannot be edited.' })
+        return false
+      }
+
+      if (!round._dbId) {
+        dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } })
+        return true
+      }
+
+      const savedRound = await api.swapRoundPlayers(round._dbId, playerIdA, playerIdB, token)
+      dispatch({
+        type: 'SWAP_PLAYERS',
+        payload: { roundIdx, playerIdA, playerIdB, round: adaptBackendRound(savedRound) },
+      })
+      return true
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message })
+      return false
     }
   }
 
@@ -944,6 +1120,8 @@ export function SessionProvider({ children }) {
     playerLibrary: state.playerLibrary,
     playerDatabase,
     error: state.error,
+    isLoading: state.isLoading,
+    hasLoaded: state.hasLoaded,
   }
 
   async function setSession(config) {
@@ -1048,7 +1226,7 @@ export function SessionProvider({ children }) {
       const sp = await api.addPlayerToSession({
         sessionId: state.currentSessionId,
         playerId: player.id,
-        plannedRounds: Number(playerData.plannedRounds ?? 0),
+        plannedRounds: Number(playerData.plannedRounds),
       }, token)
 
       dispatch({
@@ -1058,7 +1236,7 @@ export function SessionProvider({ children }) {
           name: player.name,
           gender: player.gender,
           rating: Number(player.rating ?? 0),
-          plannedRounds: Number(playerData.plannedRounds ?? 0),
+          plannedRounds: Number(playerData.plannedRounds),
           roundsPlayed: 0,
           sitOutCount: 0,
           status: 'active',
@@ -1073,42 +1251,127 @@ export function SessionProvider({ children }) {
 
   async function updatePlayer(id, updates) {
     try {
+      const sessionPlayer = currentSession?.players.find(player => player.id === id)
+
       await api.updatePlayer(id, {
         name: updates.name,
         gender: updates.gender,
         rating: updates.rating !== undefined ? Number(updates.rating) : undefined,
       }, token)
+
+      if (sessionPlayer?._sessionPlayerId && updates.plannedRounds !== undefined) {
+        await api.updateSessionPlayer(
+          sessionPlayer._sessionPlayerId,
+          { plannedRounds: Number(updates.plannedRounds) },
+          token
+        )
+      }
+
       dispatch({ type: 'UPDATE_PLAYER', payload: { id, updates } })
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message })
+      throw err
     }
   }
 
   async function togglePlayerStatus(playerId) {
     const player = currentSession?.players.find(p => p.id === playerId)
+    if (!player) return false
     const newDbStatus = player?.status === 'active' ? 'RESTING' : 'ACTIVE'
     if (player?._sessionPlayerId) {
       try {
         await api.updateSessionPlayer(player._sessionPlayerId, { status: newDbStatus }, token)
       } catch (err) {
         dispatch({ type: 'SET_ERROR', payload: err.message })
-        return
+        return false
       }
     }
     dispatch({ type: 'TOGGLE_PLAYER_STATUS', payload: playerId })
+    return true
+  }
+
+  async function restPlayerWithReplacement(playerId, roundIdx, replacementPlayerId) {
+    const player = currentSession?.players.find(p => p.id === playerId)
+    const round = currentSession?.rounds?.[roundIdx]
+
+    if (!player || !round || !replacementPlayerId) {
+      dispatch({ type: 'SET_ERROR', payload: 'This player cannot be automatically replaced in the current round.' })
+      return false
+    }
+
+    try {
+      const swapped = await swapPlayers(roundIdx, playerId, replacementPlayerId)
+      if (!swapped) return false
+
+      if (player._sessionPlayerId) {
+        await api.updateSessionPlayer(player._sessionPlayerId, { status: 'RESTING' }, token)
+      }
+
+      dispatch({
+        type: 'SET_PLAYER_STATUS',
+        payload: { playerId, status: 'resting' },
+      })
+      return true
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      return false
+    }
+  }
+
+  async function clearSchedule() {
+    try {
+      if (!state.currentSessionId) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return false
+      }
+
+      await api.clearRounds(state.currentSessionId, token)
+      dispatch({ type: 'CLEAR_SCHEDULE' })
+      return true
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+      return false
+    }
+  }
+
+  async function setBroadcastRound(roundNumber) {
+    try {
+      if (!state.currentSessionId) return
+      await api.updateSession(state.currentSessionId, { selectedBroadcastRoundNumber: roundNumber }, token)
+      dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
+  }
+
+  async function toggleBroadcast() {
+    try {
+      if (!state.currentSessionId || !currentSession) {
+        dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
+        return
+      }
+      const isBroadcasting = !currentSession.isBroadcasting
+      await api.updateSession(state.currentSessionId, { isBroadcasting }, token)
+      dispatch({ type: 'TOGGLE_BROADCAST' })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
   }
 
   async function removePlayer(playerId) {
     const player = currentSession?.players.find(p => p.id === playerId)
-    if (player?._sessionPlayerId) {
-      try {
-        await api.removePlayerFromSession(player._sessionPlayerId, token)
-      } catch (err) {
-        dispatch({ type: 'SET_ERROR', payload: err.message })
-        return
-      }
+
+    if (playerAppearsInScheduledMatch(state.sessions, playerId)) {
+      dispatch({ type: 'SET_ERROR', payload: 'This player is already scheduled in a match. Clear the schedule before deleting them.' })
+      return
     }
-    dispatch({ type: 'REMOVE_PLAYER', payload: playerId })
+
+    try {
+      await api.deletePlayer(playerId, token)
+      dispatch({ type: 'REMOVE_PLAYER', payload: playerId })
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message })
+    }
   }
 
   const actions = {
@@ -1122,16 +1385,16 @@ export function SessionProvider({ children }) {
     updatePlayer,
     removePlayer,
     togglePlayerStatus,
+    restPlayerWithReplacement,
     generateFirstRound,
     generateRoundFromPlayers,
     confirmAndGenerateNext,
-    clearSchedule: () => dispatch({ type: 'CLEAR_SCHEDULE' }),
-    setBroadcastRound: (roundNumber) => dispatch({ type: 'SET_BROADCAST_ROUND', payload: roundNumber }),
+    clearSchedule,
+    setBroadcastRound,
     reshuffleRound,
     undoReshuffleRound: (roundIdx) => dispatch({ type: 'UNDO_RESHUFFLE_ROUND', payload: roundIdx }),
-    swapPlayers: (roundIdx, playerIdA, playerIdB) =>
-      dispatch({ type: 'SWAP_PLAYERS', payload: { roundIdx, playerIdA, playerIdB } }),
-    toggleBroadcast: () => dispatch({ type: 'TOGGLE_BROADCAST' }),
+    swapPlayers,
+    toggleBroadcast,
     clearError: () => dispatch({ type: 'CLEAR_ERROR' }),
     reset: () => dispatch({ type: 'RESET' }),
     getPlayerById: (id) => currentSession?.players.find(player => player.id === id),

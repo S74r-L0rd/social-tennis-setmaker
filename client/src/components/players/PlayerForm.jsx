@@ -1,24 +1,36 @@
 import { useEffect, useState } from 'react'
 
-const EMPTY = { name: '', gender: 'male', rating: 2, plannedRounds: 0 }
+const EMPTY = { name: '', gender: 'male', rating: 2, plannedRounds: '' }
 const ROUND_OPTIONS = [
-  { value: 0, label: 'All' },
   ...Array.from({ length: 10 }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
 ]
 
+function normaliseInitialValues(values) {
+  if (!values) return EMPTY
+
+  return {
+    ...values,
+    plannedRounds: Number(values.plannedRounds) > 0 ? values.plannedRounds : '',
+  }
+}
+
 export default function PlayerForm({ onSubmit, initialValues = null, onCancel }) {
-  const [form, setForm] = useState(initialValues ?? EMPTY)
+  const [form, setForm] = useState(() => normaliseInitialValues(initialValues))
   const [errors, setErrors] = useState({})
   const isEdit = Boolean(initialValues)
 
   useEffect(() => {
-    setForm(initialValues ?? EMPTY)
+    setForm(normaliseInitialValues(initialValues))
     setErrors({})
   }, [initialValues])
 
   function validate() {
     const e = {}
     if (!form.name.trim()) e.name = 'Name is required'
+    const plannedRounds = Number(form.plannedRounds)
+    if (!Number.isInteger(plannedRounds) || plannedRounds < 1) {
+      e.plannedRounds = 'Select at least 1 round'
+    }
     return e
   }
 
@@ -98,14 +110,17 @@ export default function PlayerForm({ onSubmit, initialValues = null, onCancel })
         <select
           value={form.plannedRounds}
           onChange={e => set('plannedRounds', e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700"
+          required
+          className={`w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-coral-400 focus:border-transparent transition-all bg-white shadow-sm text-gray-700 ${errors.plannedRounds ? 'border-red-400' : 'border-gray-200'}`}
         >
+          <option value="" disabled>Select rounds</option>
           {ROUND_OPTIONS.map(option => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
+        {errors.plannedRounds && <p className="text-xs text-red-500">{errors.plannedRounds}</p>}
       </div>
 
       <div className="flex gap-3 pt-1">

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSession } from '../context/SessionContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { RatingBadge, GenderBadge } from '../components/ui/Badge'
-import { DEFAULT_MATCH_DURATION_MINUTES, formatRoundStartLabel, getRoundStartDate } from '../utils/roundSchedule'
+import LoadingScreen from '../components/ui/LoadingScreen'
+import { formatBroadcastRoundStatusLabel, getRoundSessionState } from '../utils/roundSchedule'
 
 const SESSION_STATES = [
   { key: 'all', label: 'All Rounds' },
@@ -11,19 +12,20 @@ const SESSION_STATES = [
   { key: 'completed', label: 'Completed Session' },
 ]
 
-function getRoundSessionState(sessionConfig, round) {
-  if (!round) return null
-
-  const roundStartDate = getRoundStartDate(sessionConfig, round.roundNumber)
-  if (!roundStartDate) return null
-
-  const now = new Date()
-  const matchDurationMinutes = Number(sessionConfig?.matchDurationMinutes ?? DEFAULT_MATCH_DURATION_MINUTES)
-  const roundEndDate = new Date(roundStartDate.getTime() + matchDurationMinutes * 60 * 1000)
-
-  if (now < roundStartDate) return 'upcoming'
-  if (now >= roundEndDate) return 'completed'
-  return 'in_progress'
+function getOrderedRoundEntries(rounds) {
+  return rounds
+    .map((round, originalIndex) => ({ round, originalIndex }))
+    .sort((a, b) => {
+      const aNumber = Number(a.round.roundNumber ?? 0)
+      const bNumber = Number(b.round.roundNumber ?? 0)
+      if (aNumber !== bNumber) return aNumber - bNumber
+      return a.originalIndex - b.originalIndex
+    })
+    .map((entry, index) => ({
+      ...entry,
+      displayRoundNumber: index + 1,
+      key: `${entry.round._dbId ?? entry.round.roundNumber ?? 'round'}-${entry.originalIndex}`,
+    }))
 }
 
 function PlayerChip({ player, showRatings }) {
@@ -37,14 +39,15 @@ function PlayerChip({ player, showRatings }) {
   )
 }
 
-function BroadcastRound({ round, session, getPlayerById, showRatings }) {
-  const roundStartLabel = formatRoundStartLabel(session, round.roundNumber)
+function BroadcastRound({ round, displayRoundNumber, session, getPlayerById, showRatings, currentTime }) {
+  const roundStatusLabel = formatBroadcastRoundStatusLabel(session, displayRoundNumber, currentTime)
+  const sitOuts = round.sitOuts ?? []
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <div>
-          <h3 className="text-xl font-black text-green-900">Round {round.roundNumber}</h3>
+          <h3 className="text-xl font-black text-green-900">Round {displayRoundNumber}</h3>
         </div>
       </div>
 
@@ -54,15 +57,9 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
           <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="flex flex-col items-start gap-2 px-4 py-4 bg-green-900 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6">
               <span className="text-xs font-black text-white uppercase tracking-widest">{match.court}</span>
-              {roundStartLabel ? (
-                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
-                  Starts {roundStartLabel}
-                </span>
-              ) : (
-                <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
-                  Start time unavailable
-                </span>
-              )}
+              <span className="text-[11px] font-black tracking-wide text-white sm:text-xs">
+                {roundStatusLabel}
+              </span>
             </div>
             <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5">
               <div className="flex min-w-0 flex-1 flex-col gap-2.5">
@@ -78,6 +75,17 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
           </div>
         )
       })}
+
+      {sitOuts.length > 0 && (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <p className="mb-4 text-xs font-black uppercase tracking-widest text-gray-400 sm:text-sm">Sitting Out</p>
+          <div className="flex flex-wrap gap-2.5 sm:gap-3">
+            {sitOuts.map(player => (
+              <PlayerChip key={player.id} player={getPlayerById(player.id)} showRatings={showRatings} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -85,32 +93,46 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
 export default function BroadcastPage() {
   const { state, toggleBroadcast, setBroadcastRound, getPlayerById } = useSession()
   const [showRatings, setShowRatings] = useState(true)
-  const [selectedRoundNumber, setSelectedRoundNumber] = useState(null)
+  const [selectedRoundKey, setSelectedRoundKey] = useState(null)
   const [selectedSessionState, setSelectedSessionState] = useState('all')
+  const [currentTime, setCurrentTime] = useState(() => new Date())
+  const [broadcastPendingAction, setBroadcastPendingAction] = useState(null)
   const broadcastUrl = window.location.origin + '/broadcast'
+  const roundEntries = getOrderedRoundEntries(state.rounds)
 
   useEffect(() => {
-    if (state.rounds.length === 0) {
-      setSelectedRoundNumber(null)
+    const intervalId = window.setInterval(() => {
+      setCurrentTime(new Date())
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  useEffect(() => {
+    if (roundEntries.length === 0) {
+      setSelectedRoundKey(null)
       return
     }
 
-    if (selectedRoundNumber == null) {
-      const preferredRoundNumber = state.selectedBroadcastRoundNumber ?? state.rounds[0].roundNumber
-      setSelectedRoundNumber(preferredRoundNumber)
+    const preferredEntry = roundEntries.find(entry =>
+      entry.round.roundNumber === state.selectedBroadcastRoundNumber
+      || entry.displayRoundNumber === state.selectedBroadcastRoundNumber
+    ) ?? roundEntries[0]
+
+    if (selectedRoundKey == null) {
+      setSelectedRoundKey(preferredEntry.key)
       return
     }
 
-    const hasSelectedRound = state.rounds.some(round => round.roundNumber === selectedRoundNumber)
+    const hasSelectedRound = roundEntries.some(entry => entry.key === selectedRoundKey)
     if (!hasSelectedRound) {
-      const fallbackRoundNumber = state.selectedBroadcastRoundNumber ?? state.rounds[0].roundNumber
-      setSelectedRoundNumber(fallbackRoundNumber)
+      setSelectedRoundKey(preferredEntry.key)
     }
-  }, [state.rounds, state.selectedBroadcastRoundNumber, selectedRoundNumber])
+  }, [roundEntries, state.selectedBroadcastRoundNumber, selectedRoundKey])
 
-  const roundsWithState = state.rounds.map(round => ({
-    ...round,
-    sessionState: getRoundSessionState(state.session, round),
+  const roundsWithState = roundEntries.map(entry => ({
+    ...entry,
+    sessionState: getRoundSessionState(state.session, entry.displayRoundNumber, currentTime),
   }))
 
   const visibleRounds = selectedSessionState === 'all'
@@ -119,19 +141,49 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     if (visibleRounds.length === 0) return
-    if (visibleRounds.some(round => round.roundNumber === selectedRoundNumber)) return
-    setSelectedRoundNumber(visibleRounds[0].roundNumber)
-  }, [visibleRounds, selectedRoundNumber])
+    if (visibleRounds.some(entry => entry.key === selectedRoundKey)) return
+    setSelectedRoundKey(visibleRounds[0].key)
+  }, [visibleRounds, selectedRoundKey])
 
-  const broadcastRound = visibleRounds.find(round => round.roundNumber === selectedRoundNumber) ?? null
+  const broadcastEntry = visibleRounds.find(entry => entry.key === selectedRoundKey) ?? null
 
-  function handleSelectRound(roundNumber) {
-    setSelectedRoundNumber(roundNumber)
-    setBroadcastRound(roundNumber)
+  function handleSelectRound(entry) {
+    setSelectedRoundKey(entry.key)
+    setBroadcastRound(entry.round.roundNumber ?? entry.displayRoundNumber)
   }
 
   function handleSelectSessionState(sessionState) {
     setSelectedSessionState(sessionState)
+  }
+
+  async function handleToggleBroadcast() {
+    const nextAction = state.isBroadcasting ? 'stopping' : 'starting'
+    setBroadcastPendingAction(nextAction)
+    try {
+      await toggleBroadcast()
+    } finally {
+      setBroadcastPendingAction(null)
+    }
+  }
+
+  if (broadcastPendingAction) {
+    return (
+      <LoadingScreen
+        message={broadcastPendingAction === 'starting' ? 'Starting broadcast' : 'Stopping broadcast'}
+        detail={broadcastPendingAction === 'starting'
+          ? 'Saving broadcast settings so players can view the schedule.'
+          : 'Turning off the live broadcast for this session.'}
+      />
+    )
+  }
+
+  if (state.isLoading || !state.hasLoaded) {
+    return (
+      <LoadingScreen
+        message="Loading broadcast schedule"
+        detail="Fetching the latest rounds and broadcast settings from the server."
+      />
+    )
   }
 
   if (!state.isBroadcasting) {
@@ -142,7 +194,12 @@ export default function BroadcastPage() {
           <h2 className="text-3xl font-black text-green-900">Broadcast is off</h2>
           <p className="text-base text-gray-400 mt-1.5">Turn on broadcast so players can view the schedule</p>
         </div>
-        <button onClick={toggleBroadcast}
+        {state.error && (
+          <div className="max-w-lg rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {state.error}
+          </div>
+        )}
+        <button onClick={handleToggleBroadcast}
           className="px-8 py-3.5 bg-coral-500 hover:bg-coral-600 text-white rounded-xl font-black text-sm transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98]">
           Start Broadcasting
         </button>
@@ -160,7 +217,7 @@ export default function BroadcastPage() {
             <p className="text-sm text-gray-400 break-words sm:text-base">{state.session?.name}</p>
           </div>
         </div>
-        <button onClick={toggleBroadcast}
+        <button onClick={handleToggleBroadcast}
           className="text-xs px-4 py-2 border border-gray-200 rounded-full text-gray-500 hover:border-red-300 hover:text-red-500 transition-all duration-200 font-bold">
           Stop
         </button>
@@ -189,26 +246,26 @@ export default function BroadcastPage() {
         </div>
       </div>
 
-      {state.rounds.length === 0 ? (
+      {roundEntries.length === 0 ? (
         <p className="text-center text-sm text-gray-400 py-8">No schedule yet</p>
       ) : (
         <div className="flex flex-col gap-6 sm:gap-8">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 w-full text-xs font-black uppercase tracking-wide text-gray-400 sm:w-auto">Rounds</span>
-            {visibleRounds.map(round => {
-              const isSelected = round.roundNumber === selectedRoundNumber
+            {visibleRounds.map(entry => {
+              const isSelected = entry.key === selectedRoundKey
               return (
                 <button
-                  key={round.roundNumber}
+                  key={entry.key}
                   type="button"
-                  onClick={() => handleSelectRound(round.roundNumber)}
+                  onClick={() => handleSelectRound(entry)}
                   className={`inline-flex h-10 min-w-10 items-center justify-center rounded-xl px-3 text-sm font-black transition-all ${
                     isSelected
                       ? 'bg-coral-500 text-white shadow-sm'
                       : 'border border-gray-200 bg-white text-gray-600 hover:border-coral-300 hover:text-coral-600'
                   }`}
                 >
-                  {round.roundNumber}
+                  {entry.displayRoundNumber}
                 </button>
               )
             })}
@@ -234,14 +291,22 @@ export default function BroadcastPage() {
             })}
           </div>
 
-          {!broadcastRound && (
+          {!broadcastEntry && (
             <p className="text-center text-sm text-gray-400 py-8">
               No rounds match this session state.
             </p>
           )}
 
-          {broadcastRound && (
-            <BroadcastRound round={broadcastRound} session={state.session} getPlayerById={getPlayerById} showRatings={showRatings} />
+          {broadcastEntry && (
+            <BroadcastRound
+              key={broadcastEntry.key}
+              round={broadcastEntry.round}
+              displayRoundNumber={broadcastEntry.displayRoundNumber}
+              session={state.session}
+              getPlayerById={getPlayerById}
+              showRatings={showRatings}
+              currentTime={currentTime}
+            />
           )}
         </div>
       )}

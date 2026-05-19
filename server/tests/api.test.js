@@ -127,15 +127,15 @@ async function testSessions() {
     sessionId = data.data.id;
   });
 
-  await test("GET /api/sessions lists sessions (public)", async () => {
-    const { status, data } = await req("GET", "/api/sessions");
+  await test("GET /api/sessions lists owned sessions", async () => {
+    const { status, data } = await req("GET", "/api/sessions", undefined, token);
     assert(status === 200, `status 200 (got ${status})`);
     assert(Array.isArray(data.data), "data is an array");
     assert(data.data.some(s => s.id === sessionId), "created session appears in list");
   });
 
-  await test("GET /api/sessions/:id returns correct session", async () => {
-    const { status, data } = await req("GET", `/api/sessions/${sessionId}`);
+  await test("GET /api/sessions/:id returns correct owned session", async () => {
+    const { status, data } = await req("GET", `/api/sessions/${sessionId}`, undefined, token);
     assert(status === 200, `status 200 (got ${status})`);
     assert(data.data?.id === sessionId, "id matches");
     assert(data.data?.name === "Integration Test Session", "name matches");
@@ -186,14 +186,14 @@ async function testPlayers() {
     createdPlayerIds.push(playerId);
   });
 
-  await test("GET /api/players lists players (public)", async () => {
-    const { status, data } = await req("GET", "/api/players");
+  await test("GET /api/players lists owned players", async () => {
+    const { status, data } = await req("GET", "/api/players", undefined, token);
     assert(status === 200, `status 200 (got ${status})`);
     assert(data.data.some(p => p.id === playerId), "created player appears in list");
   });
 
-  await test("GET /api/players/:id returns correct player", async () => {
-    const { status, data } = await req("GET", `/api/players/${playerId}`);
+  await test("GET /api/players/:id returns correct owned player", async () => {
+    const { status, data } = await req("GET", `/api/players/${playerId}`, undefined, token);
     assert(status === 200, `status 200 (got ${status})`);
     assert(data.data?.id === playerId, "id matches");
   });
@@ -215,7 +215,7 @@ async function testPlayers() {
   });
 
   await test("GET /api/players/:id returns 404 for unknown id", async () => {
-    const { status } = await req("GET", "/api/players/999999999");
+    const { status } = await req("GET", "/api/players/999999999", undefined, token);
     assert(status === 404, `status 404 (got ${status})`);
   });
 }
@@ -227,6 +227,7 @@ async function testSessionPlayers() {
     const { status, data } = await req("POST", "/api/session-players", {
       sessionId,
       playerId,
+      plannedRounds: 1,
     }, token);
     assert(status === 201, `status 201 (got ${status})`);
     assert(data.data?.playerId === playerId, "playerId matches");
@@ -245,6 +246,7 @@ async function testSessionPlayers() {
     const { status, data } = await req("POST", "/api/session-players", {
       sessionId,
       playerId,
+      plannedRounds: 1,
     }, token);
     assert(status === 409, `status 409 (got ${status})`);
     assert(data.success === false, "success is false");
@@ -272,7 +274,7 @@ async function testRounds() {
       rating: 5 + i,
     }, token);
     createdPlayerIds.push(data.data.id);
-    await req("POST", "/api/session-players", { sessionId, playerId: data.data.id }, token);
+    await req("POST", "/api/session-players", { sessionId, playerId: data.data.id, plannedRounds: 1 }, token);
   }
 
   await test("POST /api/rounds/generate persists round and matches to DB", async () => {
