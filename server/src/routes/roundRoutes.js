@@ -16,6 +16,10 @@ function makePairKey(a, b) {
   return [a, b].sort((x, y) => x - y).join("-");
 }
 
+function isRoundNumberConflict(error) {
+  return error?.code === "P2002" && error?.meta?.modelName === "Round";
+}
+
 // POST /api/rounds/generate
 // Generates a round from DB state and saves the result back to DB
 router.post("/generate", requireAuth, async (req, res) => {
@@ -117,14 +121,33 @@ router.post("/generate", requireAuth, async (req, res) => {
       }
     }
 
-    // 5. Determine the next round number
-    const nextRoundNumber = previousRounds.length + 1;
+    const latestRound = previousRounds[previousRounds.length - 1];
+    if (latestRound && !latestRound.isConfirmed) {
+      return res.status(409).json({
+        success: false,
+        error: "Confirm the current round before generating another round.",
+      });
+    }
 
-    // 6. Run the scheduling algorithm
+    // 5. Run the scheduling algorithm
     const result = generateRound(players, courts, history);
 
-    // 7. Save round, matches, assignments, sit-outs and update player stats — all in one transaction
+    // 6. Save round, matches, assignments, sit-outs and update player stats — all in one transaction
     const savedRound = await prisma.$transaction(async (tx) => {
+      const latestRoundInTransaction = await tx.round.findFirst({
+        where: { sessionId },
+        orderBy: { roundNumber: "desc" },
+        select: { roundNumber: true, isConfirmed: true },
+      });
+
+      if (latestRoundInTransaction && !latestRoundInTransaction.isConfirmed) {
+        const error = new Error("Confirm the current round before generating another round.");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const nextRoundNumber = (latestRoundInTransaction?.roundNumber ?? 0) + 1;
+
       const round = await tx.round.create({
         data: { sessionId, roundNumber: nextRoundNumber },
       });
@@ -215,6 +238,17 @@ router.post("/generate", requireAuth, async (req, res) => {
 
     res.status(201).json({ success: true, data: savedRound });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
+
+    if (isRoundNumberConflict(error)) {
+      return res.status(409).json({
+        success: false,
+        error: "A round was already generated for this session. Refresh the schedule and try again.",
+      });
+    }
+
     console.error("Generate round error:", error);
     res.status(500).json({ success: false, error: "Failed to generate round." });
   }
