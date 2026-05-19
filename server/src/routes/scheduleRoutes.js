@@ -1,6 +1,6 @@
 const express = require("express");
 const { generateRound } = require("../algorithm/scheduler");
-const requireAuth = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ function getEligiblePlayers(players) {
 
 router.post("/generate", requireAuth, (req, res) => {
   try {
-    const { players, courts, history } = req.body;
+    const { players, courts, history, config } = req.body;
     if (!Array.isArray(players) || !Array.isArray(courts)) {
       return res.status(400).json({
         success: false,
@@ -25,7 +25,7 @@ router.post("/generate", requireAuth, (req, res) => {
 
     const eligiblePlayers = getEligiblePlayers(players);
 
-    const result = generateRound(eligiblePlayers, courts, history);
+    const result = generateRound(eligiblePlayers, courts, history, config);
 
     res.status(200).json({
       success: true,

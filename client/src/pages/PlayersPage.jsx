@@ -1,9 +1,32 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import { getSessionScheduleIssue } from '../utils/roundSchedule'
 import PlayerForm from '../components/players/PlayerForm'
 import PlayerTable from '../components/players/PlayerTable'
+
+const GAME_MODE_DETAILS = {
+  mixed: {
+    label: 'Mixed Doubles',
+    requirement: 'Each team needs one male player and one female player.',
+    example: 'M + F vs M + F',
+  },
+  same_gender: {
+    label: 'Same Gender Doubles',
+    requirement: 'Each match must be all male players or all female players.',
+    example: 'M + M vs M + M or F + F vs F + F',
+  },
+  flexible: {
+    label: 'Flexible',
+    requirement: 'Any gender combination can be scheduled.',
+    example: 'Any valid doubles combination',
+  },
+}
+
+function getGameModeDetails(gameMode) {
+  return GAME_MODE_DETAILS[gameMode] ?? GAME_MODE_DETAILS.flexible
+}
 
 export default function PlayersPage() {
   const { state, addPlayer, updatePlayer, generateRoundFromPlayers, clearError } = useSession()
@@ -13,8 +36,16 @@ export default function PlayersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState('all')
   const [generating, setGenerating] = useState(false)
+  const [generationWarning, setGenerationWarning] = useState(null)
+  const [generationAttempted, setGenerationAttempted] = useState(false)
 
   useEffect(() => { clearError() }, [])
+
+  useEffect(() => {
+    if (!generationAttempted || !state.error) return
+    setGenerationWarning(state.error)
+    setGenerationAttempted(false)
+  }, [generationAttempted, state.error])
 
   useEffect(() => {
     if (!showAddedNotice) return
@@ -48,6 +79,7 @@ export default function PlayersPage() {
     { id: 'recent', label: 'Recent', count: recentPlayers.length },
     { id: 'all', label: 'All', count: state.players.length },
   ]
+  const gameModeDetails = getGameModeDetails(state.session?.gameMode)
 
   async function handleAddPlayer(data) {
     await addPlayer(data)
@@ -65,13 +97,61 @@ export default function PlayersPage() {
 
   async function handleGenerate() {
     clearError()
+    setGenerationWarning(null)
+    setGenerationAttempted(true)
     setGenerating(true)
     const didGenerate = await generateRoundFromPlayers()
     setGenerating(false)
     if (didGenerate) navigate('/schedule')
   }
 
+  function closeGenerationWarning() {
+    setGenerationWarning(null)
+    clearError()
+  }
+
+  const generationWarningElement = generationWarning ? (
+    <div className="fixed inset-0 z-[9999] flex min-h-screen items-center justify-center bg-green-950/45 px-4 py-6 backdrop-blur-sm sm:px-6">
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-2xl">
+        <div className="border-b border-amber-100 bg-amber-50 px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-amber-500 shadow-sm">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-green-900 sm:text-xl">Schedule cannot be generated</h2>
+              <p className="mt-1 text-sm font-bold text-amber-600">Check the selected format</p>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Selected format</p>
+              <p className="mt-1 text-base font-black text-green-900">{gameModeDetails.label}</p>
+              <p className="mt-1 text-sm leading-relaxed text-gray-600">{gameModeDetails.requirement}</p>
+            </div>
+            <p className="text-sm leading-relaxed text-gray-600">{generationWarning}</p>
+          </div>
+        </div>
+        <div className="flex border-t border-gray-100 bg-gray-50 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={closeGenerationWarning}
+            className="w-full rounded-xl bg-coral-500 px-4 py-3 text-sm font-black text-white transition-all hover:bg-coral-600"
+          >
+            Review Players
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
+    <>
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-fade-in">
       <div className="flex items-center justify-between animate-slide-up">
         <div>
@@ -82,7 +162,7 @@ export default function PlayersPage() {
         </div>
       </div>
 
-      {state.error && (
+      {state.error && !generationWarning && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600 animate-scale-in">
           {state.error}
         </div>
@@ -148,6 +228,18 @@ export default function PlayersPage() {
                   {selectedCourtCount} court{selectedCourtCount !== 1 ? 's' : ''} selected · up to {maxPlayersThisRound} player{maxPlayersThisRound !== 1 ? 's' : ''} this round
                 </p>
               )}
+              <div className="w-full rounded-2xl border border-green-100 bg-green-50/70 px-4 py-3 text-left shadow-sm sm:max-w-xl">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-green-700">Selected Format</p>
+                    <p className="mt-1 text-base font-black text-green-950">{gameModeDetails.label}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-600">{gameModeDetails.requirement}</p>
+                  </div>
+                  <span className="inline-flex w-fit shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-green-800 shadow-sm">
+                    {gameModeDetails.example}
+                  </span>
+                </div>
+              </div>
               {sitOutCountThisRound > 0 && (
                 <p className="text-xs text-amber-700">
                   {sitOutCountThisRound} player{sitOutCountThisRound !== 1 ? 's' : ''} will sit out this round
@@ -227,5 +319,7 @@ export default function PlayersPage() {
         </div>
       </div>
     </div>
+    {generationWarningElement ? createPortal(generationWarningElement, document.body) : null}
+    </>
   )
 }

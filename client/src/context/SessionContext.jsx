@@ -262,6 +262,7 @@ function getRoundPlayerPool(round) {
     id: player.id,
     rating: player.rating,
     sitOutCount: player.sitOutCount ?? 0,
+    gender: player.gender,
   }))
 }
 
@@ -1031,7 +1032,8 @@ export function SessionProvider({ children }) {
         getRoundPlayerPool(round),
         getRoundCourts(round),
         cloneHistory(round.historySnapshot ?? currentSession.history),
-        token
+        token,
+        { gameMode: currentSession.gameMode }
       )
       dispatch({ type: 'RESHUFFLE_ROUND_RESULT', payload: { roundIdx, result } })
     } catch (error) {

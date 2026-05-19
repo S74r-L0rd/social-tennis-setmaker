@@ -121,6 +121,7 @@ router.post("/generate", requireAuth, async (req, res) => {
       id: sp.playerId,
       rating: sp.player.rating,
       sitOutCount: sp.sitOutCount,
+      gender: sp.player.gender,
     }));
 
     // 3. Fetch available courts (ordered by priority)
@@ -172,7 +173,7 @@ router.post("/generate", requireAuth, async (req, res) => {
     const nextRoundNumber = previousRounds.length + 1;
 
     // 6. Run the scheduling algorithm
-    const result = generateRound(players, courts, history);
+    const result = generateRound(players, courts, history, { gameMode: session.gameMode });
 
     // 7. Save round, matches, assignments, sit-outs and update player stats — all in one transaction
     const savedRound = await prisma.$transaction(async (tx) => {
