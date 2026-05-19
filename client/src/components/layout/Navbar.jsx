@@ -36,7 +36,6 @@ export default function Navbar() {
           <nav className="hidden sm:flex items-center gap-1">
             {STEPS.map(s => {
               const isActive = s.step === currentStep
-              const isDone   = s.step < currentStep
               return (
                 <button
                   key={s.path}
@@ -44,8 +43,6 @@ export default function Navbar() {
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${
                     isActive
                       ? 'bg-coral-500 text-white shadow-sm'
-                      : isDone
-                      ? 'text-green-200 hover:text-white hover:bg-white/10'
                       : 'text-green-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
@@ -60,7 +57,7 @@ export default function Navbar() {
               className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${
                 location.pathname === '/fairness-analysis'
                   ? 'bg-coral-500 text-white shadow-sm'
-                  : 'text-green-200 hover:text-white hover:bg-white/10'
+                  : 'text-green-400 hover:text-white hover:bg-white/5'
               }`}
             >
               Fairness
