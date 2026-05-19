@@ -82,7 +82,7 @@ export default function HomePage() {
       <div className="flex flex-col gap-8 animate-slide-up">
         <div className="text-center">
           <h2 className="text-3xl font-black text-green-900">
-            Why organizers <UnderlinedWord>choose</UnderlinedWord> SetMaker
+            Why organisers <UnderlinedWord>choose</UnderlinedWord> SetMaker
           </h2>
           <p className="text-base text-gray-400 mt-4">Run better social sessions — for any skill level, any group size.</p>
         </div>

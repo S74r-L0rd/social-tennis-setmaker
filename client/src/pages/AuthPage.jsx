@@ -110,7 +110,7 @@ export default function AuthPage() {
               <span aria-hidden="true">🎾</span>
               SetMaker Access
             </div>
-            <h1 className="mt-4 text-4xl font-black leading-tight">Manage sessions with one organizer account.</h1>
+            <h1 className="mt-4 text-4xl font-black leading-tight">Manage sessions with one organiser account.</h1>
             <p className="mt-4 text-sm leading-relaxed text-green-100">
               Sign in to continue managing schedules, or create a new club account to get started.
             </p>
