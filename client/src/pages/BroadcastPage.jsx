@@ -39,6 +39,7 @@ function PlayerChip({ player, showRatings }) {
 
 function BroadcastRound({ round, session, getPlayerById, showRatings }) {
   const roundStartLabel = formatRoundStartLabel(session, round.roundNumber)
+  const sitOuts = round.sitOuts ?? []
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,6 +79,17 @@ function BroadcastRound({ round, session, getPlayerById, showRatings }) {
           </div>
         )
       })}
+
+      {sitOuts.length > 0 && (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <p className="mb-4 text-xs font-black uppercase tracking-widest text-gray-400 sm:text-sm">Sitting Out</p>
+          <div className="flex flex-wrap gap-2.5 sm:gap-3">
+            {sitOuts.map(player => (
+              <PlayerChip key={player.id} player={getPlayerById(player.id)} showRatings={showRatings} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
