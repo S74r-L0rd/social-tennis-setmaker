@@ -521,7 +521,12 @@ export default function SetupPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 animate-slide-up relative z-10" style={{ animationDelay: '0.05s' }}>
+              <div
+                className={`grid grid-cols-2 gap-4 animate-slide-up relative ${
+                  isSessionPickerOpen || isCourtPickerOpen ? 'z-50' : 'z-10'
+                }`}
+                style={{ animationDelay: '0.05s' }}
+              >
                 <div className={`col-span-2 sm:col-span-1 flex flex-col gap-2 ${isSessionPickerOpen ? 'relative z-40' : ''}`}>
                   <label className="text-xs font-black text-gray-500 uppercase tracking-wide">Session Name</label>
                   <div ref={sessionPickerRef} className="relative">
@@ -599,7 +604,7 @@ export default function SetupPage() {
                     </button>
 
                     {isCourtPickerOpen && (
-                      <div className="absolute left-0 top-full z-30 mt-2 w-full rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
+                      <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
                         <div className="flex items-center justify-between gap-3 mb-3">
                           <button
                             type="button"
