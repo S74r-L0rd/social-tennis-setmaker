@@ -22,33 +22,40 @@ export default function SchedulePage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(() => Math.max(0, state.rounds.length - 1))
   const [showClearDialog, setShowClearDialog] = useState(false)
+  const [isGeneratingNext, setIsGeneratingNext] = useState(false)
 
   useEffect(() => {
-    setActiveTab(prev => Math.min(prev, Math.max(0, state.rounds.length - 1)))
-  }, [state.rounds.length])
+    const maxRoundIdx = Math.max(0, state.rounds.length - 1)
+    setActiveTab(prev => Math.min(Math.max(prev, 0), maxRoundIdx))
+  }, [state.currentSessionId, state.rounds.length])
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   )
 
-  const currentRoundIdx = state.rounds.length - 1
-  const isCurrentTab = activeTab === currentRoundIdx
-  const currentRound = state.rounds[activeTab]
+  const currentRoundIdx = Math.max(0, state.rounds.length - 1)
+  const safeActiveTab = state.rounds.length > 0
+    ? Math.min(Math.max(activeTab, 0), state.rounds.length - 1)
+    : 0
+  const isCurrentTab = safeActiveTab === currentRoundIdx
+  const currentRound = state.rounds[safeActiveTab]
   const sessionScheduleIssue = getSessionScheduleIssue(state.session)
   const generatedAtLabel = formatGeneratedAt(currentRound?.generatedAt)
   const roundStartLabel = currentRound ? formatRoundStartLabel(state.session, currentRound.roundNumber) : null
 
   function handleDragEnd({ active, over }) {
     if (!over || active.id === over.id) return
-    swapPlayers(activeTab, Number(active.id), Number(over.id))
+    swapPlayers(safeActiveTab, Number(active.id), Number(over.id))
   }
 
-  function handleGenerateNext() {
-    if (sessionScheduleIssue) return
+  async function handleGenerateNext() {
+    if (sessionScheduleIssue || isGeneratingNext) return
     clearError()
-    confirmAndGenerateNext()
-    setActiveTab(state.rounds.length)
+    setIsGeneratingNext(true)
+    const didGenerate = await confirmAndGenerateNext()
+    setIsGeneratingNext(false)
+    if (didGenerate) setActiveTab(state.rounds.length)
   }
 
   function showPreviousRound() {
@@ -56,7 +63,7 @@ export default function SchedulePage() {
   }
 
   function showNextRound() {
-    setActiveTab(prev => Math.min(state.rounds.length - 1, prev + 1))
+    setActiveTab(prev => Math.min(currentRoundIdx, Math.max(0, prev + 1)))
   }
 
   async function handleClearSchedule() {
@@ -67,12 +74,12 @@ export default function SchedulePage() {
 
   function handleReshuffleCurrentRound() {
     if (!currentRound || sessionScheduleIssue) return
-    reshuffleRound(activeTab)
+    reshuffleRound(safeActiveTab)
   }
 
   function handleUndoReshuffle() {
     if (!currentRound?.reshuffleUndoSnapshot) return
-    undoReshuffleRound(activeTab)
+    undoReshuffleRound(safeActiveTab)
   }
 
   if (state.rounds.length === 0) {
@@ -155,7 +162,7 @@ export default function SchedulePage() {
         <button
           type="button"
           onClick={showPreviousRound}
-          disabled={activeTab === 0}
+          disabled={safeActiveTab <= 0}
           className="inline-flex items-center px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:border-gray-300 transition-all"
         >
           ← Previous Round
@@ -163,7 +170,7 @@ export default function SchedulePage() {
 
         <div className="text-center">
           <p className="text-sm font-black text-green-900">
-            Round {activeTab + 1} of {state.rounds.length}
+            Round {safeActiveTab + 1} of {state.rounds.length}
           </p>
           <p className="text-xs text-gray-400 mt-1">
             {generatedAtLabel ? `Generated ${generatedAtLabel}` : 'Generation time unavailable'}
@@ -173,7 +180,7 @@ export default function SchedulePage() {
         <button
           type="button"
           onClick={showNextRound}
-          disabled={activeTab === state.rounds.length - 1}
+          disabled={safeActiveTab >= currentRoundIdx}
           className="inline-flex items-center px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:border-gray-300 transition-all"
         >
           Next Round →
@@ -198,8 +205,9 @@ export default function SchedulePage() {
       {isCurrentTab && !currentRound?.isConfirmed && (
         <div className="border-t border-gray-100 pt-4 animate-slide-up">
           <button onClick={handleGenerateNext}
-            className="w-full py-3.5 bg-coral-500 hover:bg-coral-600 text-white font-black rounded-xl transition-all duration-200 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">
-            Confirm & Generate Next Round →
+            disabled={isGeneratingNext}
+            className="w-full py-3.5 bg-coral-500 hover:bg-coral-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-xl transition-all duration-200 text-sm shadow-sm hover:shadow-md active:scale-[0.98]">
+            {isGeneratingNext ? 'Generating Next Round...' : 'Confirm & Generate Next Round →'}
           </button>
           <p className="text-xs text-center text-gray-400 mt-2">
             Results are used to optimise the next matchup

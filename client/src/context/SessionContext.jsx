@@ -875,6 +875,11 @@ export function SessionProvider({ children }) {
         dispatch({ type: 'SET_ERROR', payload: sessionIssue })
         return false
       }
+      if ((currentSession?.rounds?.length ?? 0) > 0) {
+        await api.clearRounds(state.currentSessionId, token)
+        dispatch({ type: 'CLEAR_SCHEDULE' })
+      }
+
       const roundData = await api.generateRound(state.currentSessionId, token)
       const adaptedRound = adaptBackendRound(roundData)
 
@@ -899,7 +904,7 @@ export function SessionProvider({ children }) {
     try {
       if (!currentSession) {
         dispatch({ type: 'SET_ERROR', payload: 'No session selected.' })
-        return
+        return false
       }
       const lastRound = currentSession.rounds[currentSession.rounds.length - 1]
       if (lastRound?._dbId && !lastRound.isConfirmed) {
@@ -915,11 +920,14 @@ export function SessionProvider({ children }) {
         )
         const sitOutIds = new Set(adaptedRound.sitOuts.map(p => p.id))
         dispatch({ type: 'UPDATE_PLAYER_STATS_FROM_ROUND', payload: { playedIds, sitOutIds } })
+        return true
       } else {
         dispatch({ type: 'SET_NEXT_ROUND', payload: { updatedPlayers: currentSession.players, newHistory: currentSession.history, result: null } })
+        return false
       }
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message })
+      return false
     }
   }
 
