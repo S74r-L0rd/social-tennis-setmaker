@@ -76,7 +76,7 @@ export function formatRoundStatusLabel(sessionConfig, roundNumber, now = new Dat
   if (sessionState === 'in_progress') return 'In Progress'
 
   const startLabel = formatRoundStartLabel(sessionConfig, roundNumber)
-  return startLabel ? `Starts ${startLabel}` : 'Start time unavailable'
+  return startLabel ? `Starts at ${startLabel}` : 'Start time unavailable'
 }
 
 export function formatBroadcastRoundStatusLabel(sessionConfig, roundNumber, now = new Date()) {
